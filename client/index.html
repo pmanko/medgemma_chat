@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Model Chat</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="chat-container">
+        <header class="chat-header">
+            <h1>Multi-Model Chat</h1>
+            <div class="model-selector">
+                <label for="model-select">Choose a model:</label>
+                <select id="model-select">
+                    <option value="phi3">Phi-3 Mini (General)</option>
+                    <option value="medgemma">MedGemma (Medical)</option>
+                </select>
+            </div>
+        </header>
+        
+        <main id="chat-window" class="chat-window">
+            <!-- Chat messages will be appended here by JavaScript -->
+            <div class="message model-message">
+                <div class="message-content">
+                    <p>Welcome! Select a model from the dropdown and ask a question.</p>
+                </div>
+            </div>
+        </main>
+
+        <footer class="chat-input-area">
+            <form id="chat-form" class="chat-form">
+                <input type="text" id="prompt-input" placeholder="Type your message here..." autocomplete="off" required>
+                <button type="submit">Send</button>
+            </form>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

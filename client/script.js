@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Configuration - can be easily modified for different environments
-    const SERVER_URL = 'http://127.0.0.1:8000';
+    const SERVER_URL = 'http://127.0.0.1:3000';
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000; // milliseconds
     

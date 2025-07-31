@@ -57,8 +57,8 @@ async def lifespan(app: FastAPI):
             medgemma_processor = AutoProcessor.from_pretrained("google/medgemma-4b-it")
             medgemma_model = AutoModelForImageTextToText.from_pretrained(
                 "google/medgemma-4b-it",
-                torch_dtype=torch.float16,
-                device_map="auto" if device.type == "mps" else device
+                torch_dtype=torch.bfloat16,
+                device_map="auto"
             )
             models['medgemma'] = {
                 'processor': medgemma_processor, 
@@ -130,6 +130,8 @@ def generate_phi3(request: PromptRequest):
             return_full_text=False,
             do_sample=True,
             temperature=0.7,
+            pad_token_id=pipe.tokenizer.eos_token_id,
+            use_cache=False  # Fix for DynamicCache issue
         )
         
         response_text = output[0]['generated_text'].strip()
@@ -169,16 +171,15 @@ def generate_medgemma(request: PromptRequest):
             tokenize=True,
             return_dict=True, 
             return_tensors="pt"
-        ).to(model.device)
+        ).to(model.device, dtype=torch.bfloat16)
         
         input_len = inputs["input_ids"].shape[-1]
         
-        with torch.no_grad():
+        with torch.inference_mode():
             generation = model.generate(
                 **inputs, 
                 max_new_tokens=request.max_new_tokens,
-                do_sample=True,
-                temperature=0.7
+                do_sample=False  # Use deterministic generation for stability
             )
             generation = generation[0][input_len:]
         
