@@ -102,6 +102,7 @@ app.add_middleware(
 # --- Pydantic Models for Request/Response ---
 class PromptRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000, description="User prompt")
+    system_prompt: str = Field(default="", max_length=1000, description="System prompt to guide model behavior")
     max_new_tokens: int = Field(default=256, ge=1, le=1024, description="Maximum tokens to generate")
 
 class PromptResponse(BaseModel):
@@ -122,7 +123,12 @@ def generate_phi3(request: PromptRequest):
             raise HTTPException(status_code=503, detail="Phi-3 model not available")
         
         pipe = models['phi3']
-        messages = [{"role": "user", "content": request.prompt}]
+        
+        # Build messages with optional system prompt
+        messages = []
+        if request.system_prompt:
+            messages.append({"role": "system", "content": request.system_prompt})
+        messages.append({"role": "user", "content": request.prompt})
         
         output = pipe(
             messages,
@@ -156,13 +162,17 @@ def generate_medgemma(request: PromptRequest):
         model = models['medgemma']['model']
         device = models['medgemma']['device']
 
-        # MedGemma uses a chat message format
-        messages = [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": request.prompt}]
-            }
-        ]
+        # MedGemma uses a chat message format with optional system prompt
+        messages = []
+        if request.system_prompt:
+            messages.append({
+                "role": "system",
+                "content": [{"type": "text", "text": request.system_prompt}]
+            })
+        messages.append({
+            "role": "user",
+            "content": [{"type": "text", "text": request.prompt}]
+        })
         
         # Process the input using the processor
         inputs = processor.apply_chat_template(

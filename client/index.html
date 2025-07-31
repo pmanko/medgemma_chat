@@ -1,41 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Multi-Model Chat</title>
+    
+    <!-- Pico CSS Framework -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    
+    <!-- Custom styles -->
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="chat-container">
-        <header class="chat-header">
-            <h1>Multi-Model Chat</h1>
-            <div class="model-selector">
-                <label for="model-select">Choose a model:</label>
-                <select id="model-select">
-                    <option value="phi3">Phi-3 Mini (General)</option>
-                    <option value="medgemma">MedGemma (Medical)</option>
-                </select>
-            </div>
+    <div class="container">
+        <header>
+            <nav>
+                <ul>
+                    <li><h1>🤖 Multi-Model Chat</h1></li>
+                </ul>
+                <ul>
+                    <li>
+                        <details class="dropdown">
+                            <summary role="button">
+                                <span id="current-model">🧠 Phi-3 Mini</span>
+                            </summary>
+                            <ul>
+                                <li><a href="#" data-model="phi3">🧠 Phi-3 Mini (General)</a></li>
+                                <li><a href="#" data-model="medgemma">🏥 MedGemma (Medical)</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    <li>
+                        <details class="dropdown">
+                            <summary role="button" class="secondary">
+                                <span id="current-prompt">💬 Default</span>
+                            </summary>
+                            <ul id="system-prompts">
+                                <!-- Prompts will be populated by JavaScript -->
+                            </ul>
+                        </details>
+                    </li>
+                </ul>
+            </nav>
         </header>
         
-        <main id="chat-window" class="chat-window">
-            <!-- Chat messages will be appended here by JavaScript -->
-            <div class="message model-message">
-                <div class="message-content">
-                    <p>Welcome! Select a model from the dropdown and ask a question.</p>
-                </div>
+        <main class="chat-container">
+            <div id="chat-window" class="chat-window">
+                <!-- Chat messages will be appended here by JavaScript -->
+                <article class="message-welcome">
+                    <p>👋 Welcome! Select a model and ask a question to get started.</p>
+                </article>
             </div>
-        </main>
-
-        <footer class="chat-input-area">
+            
             <form id="chat-form" class="chat-form">
-                <input type="text" id="prompt-input" placeholder="Type your message here..." autocomplete="off" required>
-                <button type="submit">Send</button>
+                <fieldset role="group">
+                    <input type="text" id="prompt-input" placeholder="Type your message here..." autocomplete="off" required>
+                    <button type="submit">📤 Send</button>
+                </fieldset>
             </form>
+        </main>
+        
+        <footer>
+            <small>
+                Powered by <mark>Phi-3</mark> & <mark>MedGemma</mark> • 
+                <a href="https://github.com" target="_blank">GitHub</a>
+            </small>
         </footer>
     </div>
 
