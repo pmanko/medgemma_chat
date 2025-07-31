@@ -331,11 +331,20 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
             // 1. Display the user's message immediately
             addMessage('user', prompt);
 
-            // 2. Clear the input field and show a loading indicator
+            // 2. Check if conversation is getting long and might trigger summarization
+            const maxHistoryBeforeSummary = selectedModel === 'medgemma' ? 8 : 16; // 2x the model limits
+            if (conversationHistory.length > maxHistoryBeforeSummary && conversationHistory.length % 10 === 0) {
+                // Show summarization notice every 10 messages after threshold
+                const modelDisplayName = selectedModel === 'medgemma' ? 'MedGemma' : 'Phi-3';
+                const contextType = selectedModel === 'medgemma' ? 'medical context' : 'conversation context';
+                addMessage('system', `📝 Long conversation detected (${conversationHistory.length} messages). Using ${modelDisplayName}-generated summaries to preserve ${contextType} while staying within model limits.`);
+            }
+
+            // 3. Clear the input field and show a loading indicator
             promptInput.value = '';
             addMessage('model', 'Thinking...', true);
 
-            // 3. Send the prompt to the backend API with retry logic
+            // 4. Send the prompt to the backend API with retry logic
             await sendRequestWithRetry(endpoint, prompt);
         } finally {
             // Always re-enable form regardless of success/failure
