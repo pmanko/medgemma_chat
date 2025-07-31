@@ -2,17 +2,99 @@
 
 # Multi-Model Chat Server Startup Script
 # Optimized for Apple Silicon (M2/M3 MacBook Pro)
+# One-step setup assuming Python 3.12 is available
 
 echo "🚀 Starting Multi-Model Chat Server..."
 echo "📍 This may take 5-10 minutes on first run (model downloads)"
 echo ""
 
+# Function to find Python 3.12
+find_python312() {
+    # Try different common locations for Python 3.12
+    for python_cmd in python3.12 /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12 python3; do
+        if command -v "$python_cmd" &> /dev/null; then
+            local version=$("$python_cmd" --version 2>&1 | grep -o '3\.[0-9][0-9]*')
+            if [[ "$version" == "3.12" ]] || [[ "$version" == "3.11" ]] || [[ "$version" == "3.10" ]] || [[ "$version" == "3.9" ]]; then
+                echo "$python_cmd"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+# Check for compatible Python version
+echo "🐍 Checking Python version..."
+PYTHON_CMD=$(find_python312)
+if [ $? -ne 0 ]; then
+    echo "❌ Python 3.9-3.12 not found. Please install Python 3.12:"
+    echo "   brew install python@3.12"
+    echo ""
+    echo "Available Python versions:"
+    ls -la /opt/homebrew/bin/python* 2>/dev/null || ls -la /usr/local/bin/python* 2>/dev/null || echo "No Python installations found in common locations"
+    exit 1
+fi
+
+echo "✅ Found compatible Python: $PYTHON_CMD ($($PYTHON_CMD --version))"
+
+# Function to install Poetry
+install_poetry() {
+    echo "📦 Installing Poetry with $PYTHON_CMD..."
+    
+    # Install Poetry using the correct Python version
+    curl -sSL https://install.python-poetry.org | $PYTHON_CMD -
+    
+    # Add Poetry to PATH for current session
+    export PATH="$HOME/.local/bin:$PATH"
+    
+    # Add to shell profile if not already there
+    SHELL_PROFILE=""
+    if [[ "$SHELL" == *"zsh"* ]]; then
+        SHELL_PROFILE="$HOME/.zshrc"
+    elif [[ "$SHELL" == *"bash"* ]]; then
+        SHELL_PROFILE="$HOME/.bash_profile"
+    fi
+    
+    if [[ -n "$SHELL_PROFILE" ]]; then
+        if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$SHELL_PROFILE" 2>/dev/null; then
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_PROFILE"
+            echo "✅ Added Poetry to PATH in $SHELL_PROFILE"
+        fi
+    fi
+    
+    # Verify Poetry installation
+    if command -v poetry &> /dev/null; then
+        echo "✅ Poetry installed successfully: $(poetry --version)"
+        return 0
+    else
+        echo "❌ Poetry installation failed"
+        return 1
+    fi
+}
+
 # Check if Poetry is installed
 if ! command -v poetry &> /dev/null; then
-    echo "❌ Poetry not found. Please install Poetry first:"
-    echo "   curl -sSL https://install.python-poetry.org | python3 -"
-    echo "   Or: pip install poetry"
-    exit 1
+    echo "📦 Poetry not found. Installing automatically..."
+    if ! install_poetry; then
+        echo "❌ Failed to install Poetry. Please install manually:"
+        echo "   curl -sSL https://install.python-poetry.org | $PYTHON_CMD -"
+        echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+        exit 1
+    fi
+fi
+
+# Ensure Poetry is using the correct Python version
+echo "🔧 Configuring Poetry to use $PYTHON_CMD..."
+if ! poetry env use "$PYTHON_CMD" 2>/dev/null; then
+    echo "⚠️  Warning: Could not set Poetry Python version, but continuing..."
+fi
+
+# Verify Poetry is working with correct Python
+POETRY_PYTHON=$(poetry run python --version 2>/dev/null)
+if [[ -n "$POETRY_PYTHON" ]]; then
+    echo "✅ Poetry using: $POETRY_PYTHON"
+else
+    echo "⚠️  Warning: Could not verify Poetry Python version"
 fi
 
 # Check if pyproject.toml exists
