@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const SERVER_URL = 'http://127.0.0.1:3000';
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000; // milliseconds
+    const REQUEST_TIMEOUT = 120000; // 2 minutes timeout for model generation
     
     // Get references to all the HTML elements we'll need to interact with
     const chatForm = document.getElementById('chat-form');
@@ -11,11 +12,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentModelSpan = document.getElementById('current-model');
     const currentPromptSpan = document.getElementById('current-prompt');
     const systemPromptsContainer = document.getElementById('system-prompts');
+    const clearHistoryButton = document.getElementById('clear-history');
     
     // Current selections
     let selectedModel = 'phi3';
     let selectedSystemPrompt = 'default';
     let customSystemPrompt = '';
+    
+    // Conversation history management
+    let conversationHistory = [];
+    let conversationId = generateConversationId();
+    
+    // Request state management
+    let isRequestInProgress = false;
 
     // System prompt presets
     const systemPrompts = {
@@ -26,6 +35,43 @@ document.addEventListener('DOMContentLoaded', () => {
         'researcher': { name: '🔬 Researcher', prompt: 'Provide evidence-based, well-researched responses.' },
         'custom': { name: '✏️ Custom', prompt: '' }
     };
+
+    // --- Conversation history management functions ---
+    function generateConversationId() {
+        return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    function addToConversationHistory(role, content) {
+        // Prevent duplicate consecutive messages
+        const lastMessage = conversationHistory[conversationHistory.length - 1];
+        if (lastMessage && lastMessage.role === role && lastMessage.content === content) {
+            console.log('Skipping duplicate message');
+            return;
+        }
+        
+        const message = {
+            role: role,
+            content: content,
+            timestamp: new Date().toISOString()
+        };
+        conversationHistory.push(message);
+        
+        // Keep conversation history manageable (last 20 messages)
+        if (conversationHistory.length > 20) {
+            conversationHistory = conversationHistory.slice(-20);
+        }
+        
+        console.log(`Added ${role} message to history. Total messages: ${conversationHistory.length}`);
+    }
+
+    function clearConversationHistory() {
+        conversationHistory = [];
+        conversationId = generateConversationId();
+        console.log('Conversation history cleared, new conversation started');
+        
+        // Add system message about clearing history
+        addMessage('system', 'Conversation history cleared. Starting fresh conversation.');
+    }
 
     // --- Initialize system prompts dropdown ---
     function populateSystemPrompts() {
@@ -148,8 +194,13 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         messageDiv.appendChild(contentDiv);
         chatWindow.appendChild(messageDiv);
 
-        // Scroll to the bottom of the chat window to see the new message
-        chatWindow.scrollTop = chatWindow.scrollHeight;
+        // Scroll to the bottom of the page to see the new message
+        setTimeout(() => {
+            window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: 'smooth'
+            });
+        }, 100);
     }
 
     // --- Helper function to remove loading message ---
@@ -165,20 +216,54 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    // --- Timeout wrapper for fetch requests ---
+    function fetchWithTimeout(url, options, timeout = REQUEST_TIMEOUT) {
+        return Promise.race([
+            fetch(url, options),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Request timeout - model may be processing')), timeout)
+            )
+        ]);
+    }
+
+    // --- Simple server health check ---
+    async function checkServerHealth() {
+        try {
+            const response = await fetch(`${SERVER_URL}/health`, {
+                method: 'GET',
+                timeout: 5000
+            });
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Server health:', data);
+                return data;
+            }
+        } catch (error) {
+            console.error('Server health check failed:', error);
+            return null;
+        }
+    }
+
     // --- Send request with retry logic ---
     async function sendRequestWithRetry(endpoint, prompt) {
         let lastError = null;
         
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                const response = await fetch(endpoint, {
+                // Add basic timing and status info
+                console.log(`Sending request to ${endpoint} (attempt ${attempt}/${MAX_RETRIES})`);
+                const startTime = Date.now();
+
+                const response = await fetchWithTimeout(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ 
                         prompt: prompt,
-                        system_prompt: getCurrentSystemPrompt()
+                        system_prompt: getCurrentSystemPrompt(),
+                        conversation_history: conversationHistory,
+                        conversation_id: conversationId
                     }),
                 });
 
@@ -189,9 +274,17 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
 
                 const data = await response.json();
                 
+                // Log execution timing
+                const executionTime = Date.now() - startTime;
+                console.log(`Request completed in ${executionTime}ms`);
+                
                 // Success - remove loading and show response
                 removeLoadingMessage();
                 addMessage('model', data.response);
+                
+                // Add both user and model messages to conversation history on success
+                addToConversationHistory('user', prompt);
+                addToConversationHistory('assistant', data.response);
                 return;
 
             } catch (error) {
@@ -213,20 +306,46 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
     chatForm.addEventListener('submit', async (e) => {
         e.preventDefault(); // Prevent the default form submission (which reloads the page)
 
+        // Prevent multiple concurrent requests
+        if (isRequestInProgress) {
+            console.log('Request already in progress, ignoring submission');
+            return;
+        }
+
         const prompt = promptInput.value.trim();
         if (!prompt) return; // Don't send empty messages
 
+        // Set request state and disable form
+        isRequestInProgress = true;
+        const submitButton = chatForm.querySelector('button[type="submit"]');
+        const originalButtonText = submitButton.textContent;
+        
+        submitButton.disabled = true;
+        submitButton.textContent = '⏳ Sending...';
+        promptInput.disabled = true;
+        clearHistoryButton.disabled = true;
+
         const endpoint = `${SERVER_URL}/generate/${selectedModel}`;
 
-        // 1. Display the user's message immediately
-        addMessage('user', prompt);
+        try {
+            // 1. Display the user's message immediately
+            addMessage('user', prompt);
 
-        // 2. Clear the input field and show a loading indicator
-        promptInput.value = '';
-        addMessage('model', 'Thinking...', true);
+            // 2. Clear the input field and show a loading indicator
+            promptInput.value = '';
+            addMessage('model', 'Thinking...', true);
 
-        // 3. Send the prompt to the backend API with retry logic
-        await sendRequestWithRetry(endpoint, prompt);
+            // 3. Send the prompt to the backend API with retry logic
+            await sendRequestWithRetry(endpoint, prompt);
+        } finally {
+            // Always re-enable form regardless of success/failure
+            isRequestInProgress = false;
+            submitButton.disabled = false;
+            submitButton.textContent = originalButtonText;
+            promptInput.disabled = false;
+            clearHistoryButton.disabled = false;
+            promptInput.focus(); // Return focus to input
+        }
     });
     
     // --- Helper function to get current system prompt ---
@@ -238,6 +357,33 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         }
     }
     
-    // Initialize the interface
+    // --- Event listener for clear history button ---
+    clearHistoryButton.addEventListener('click', () => {
+        // Don't allow clearing history during active request
+        if (isRequestInProgress) {
+            addMessage('system', 'Cannot clear history while a request is in progress. Please wait for the current response to complete.');
+            return;
+        }
+        
+        if (conversationHistory.length === 0) {
+            addMessage('system', 'No conversation history to clear.');
+            return;
+        }
+        
+        if (confirm('Are you sure you want to clear the conversation history? This action cannot be undone.')) {
+            clearConversationHistory();
+        }
+    });
+
+    // Initialize the interface and check server health
     populateSystemPrompts();
+    
+    // Check server health on startup
+    checkServerHealth().then(health => {
+        if (health) {
+            console.log(`Server healthy. Models: Phi-3 (${health.models.phi3}), MedGemma (${health.models.medgemma})`);
+        } else {
+            console.warn('Server health check failed - may be starting up');
+        }
+    });
 });

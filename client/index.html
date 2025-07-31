@@ -51,16 +51,21 @@
                     <p>👋 Welcome! Select a model and ask a question to get started.</p>
                 </article>
             </div>
-            
-            <form id="chat-form" class="chat-form">
-                <fieldset role="group">
-                    <input type="text" id="prompt-input" placeholder="Type your message here..." autocomplete="off" required>
-                    <button type="submit">📤 Send</button>
-                </fieldset>
-            </form>
         </main>
         
-        <footer>
+        <form id="chat-form" class="chat-form">
+            <div class="form-content">
+                <fieldset role="group">
+                    <input type="text" id="prompt-input" placeholder="Type your message here..." autocomplete="off" required>
+                    <div class="button-group">
+                        <button type="submit">📤 Send</button>
+                        <button type="button" id="clear-history" class="secondary">🗑️ Clear</button>
+                    </div>
+                </fieldset>
+            </div>
+        </form>
+        
+        <footer class="bottom-footer">
             <small>
                 Powered by <mark>Phi-3</mark> & <mark>MedGemma</mark> • 
                 <a href="https://github.com" target="_blank">GitHub</a>
