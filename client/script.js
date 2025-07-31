@@ -98,6 +98,7 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
             document.getElementById('save-custom-prompt').addEventListener('click', () => {
                 customSystemPrompt = document.getElementById('custom-prompt-input').value;
                 addMessage('system', `Custom system prompt saved: "${customSystemPrompt || 'Empty'}"`);
+                hideCustomPromptEditor();
             });
             
             document.getElementById('clear-custom-prompt').addEventListener('click', () => {

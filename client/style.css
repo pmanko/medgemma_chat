@@ -1,23 +1,46 @@
 /* Custom styles for chat interface with Pico CSS */
 
-/* Chat container layout */
-.chat-container {
-    height: 70vh;
+/* Full window layout */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+body {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+}
+
+.container {
+    height: 100vh;
+    max-width: 1500px;
+    width: 100%;
+    padding: 0;
+    margin: 1em auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Chat container layout - full window */
+.chat-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0 1.5rem;
 }
 
 .chat-window {
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
-    border: 1px solid var(--pico-border-color);
-    border-radius: var(--pico-border-radius);
-    background: var(--pico-card-background-color);
+    background: var(--pico-background-color);
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    margin-bottom: 1rem;
 }
 
 /* Welcome message */
@@ -45,19 +68,20 @@
 }
 
 .user-message .message-content {
-    background: var(--pico-primary-background);
-    color: var(--pico-primary-inverse);
+    background: var(--pico-primary);
+    color: white;
     border-bottom-right-radius: 0.25rem;
 }
 
-/* Model messages (left-aligned, secondary color) */
+/* Model messages (left-aligned, light background with dark text) */
 .model-message {
     align-self: flex-start;
 }
 
 .model-message .message-content {
-    background: var(--pico-secondary-background);
-    color: var(--pico-secondary-inverse);
+    background: var(--pico-card-background-color);
+    color: var(--pico-color);
+    border: 1px solid var(--pico-border-color);
     border-bottom-left-radius: 0.25rem;
 }
 
@@ -82,13 +106,43 @@
     font-style: italic;
 }
 
-/* Form styling */
+/* Form styling - pinned to bottom */
 .chat-form {
     margin: 0;
+    padding: 1rem 1.5rem;
+    background: var(--pico-background-color);
+    border-top: 1px solid var(--pico-border-color);
+    flex-shrink: 0;
 }
 
 .chat-form fieldset {
     margin: 0;
+    display: flex;
+    align-items: stretch;
+}
+
+/* Fix button alignment with input field */
+.chat-form fieldset[role="group"] {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+}
+
+.chat-form fieldset[role="group"] input {
+    flex: 1;
+    margin: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+
+.chat-form fieldset[role="group"] button {
+    margin: 0;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    white-space: nowrap;
+    padding: 0 1.5rem;
+    flex-shrink: 0;
 }
 
 /* Dropdown model selector */
@@ -96,7 +150,14 @@
     font-weight: 500;
 }
 
-/* Navigation tweaks */
+/* Header styling */
+header {
+    flex-shrink: 0;
+    background: var(--pico-background-color);
+    border-bottom: 1px solid var(--pico-border-color);
+    padding: 0 1.5rem;
+}
+
 nav h1 {
     margin: 0;
     font-size: 1.25rem;
@@ -104,8 +165,29 @@ nav h1 {
 
 /* Footer styling */
 footer {
+    flex-shrink: 0;
     text-align: center;
-    margin-top: 2rem;
-    padding: 1rem 0;
+    padding: 0.5rem 1.5rem;
+    background: var(--pico-background-color);
     border-top: 1px solid var(--pico-border-color);
+    font-size: 0.875rem;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+    .container {
+        max-width: 100%;
+    }
+    
+    .chat-container,
+    header,
+    .chat-form,
+    footer {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+    
+    .message {
+        max-width: 90%;
+    }
 }
