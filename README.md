@@ -1,269 +1,154 @@
 # Multi-Model Chat
 
-Chat application with **Phi-3** (general) and **MedGemma** (medical) models, optimized for Apple Silicon.
+Fast, lightweight chat application featuring **Gemma 3 1B** (general chat) and **MedGemma 4B** (medical Q&A), optimized for Apple Silicon Macs.
 
-## One-Step Setup
+## Quick Start
 
-**Prerequisites**: macOS with Apple Silicon + Python 3.12
+**Requirements**: macOS with Apple Silicon (M1/M2/M3), Python 3.12, 16GB+ RAM, 25GB disk space
 
 ```bash
-# 1. Install Python 3.12 (if needed)
+# Install Python if needed
 brew install python@3.12
 
-# 2. Clone and run (everything else is automatic!)
+# Clone and run
 git clone <your-repo-url>
 cd medgemma_chat
 ./start_server.sh
 ```
 
-**That's it!** The script automatically:
-- ✅ Finds your Python 3.12 installation
-- ✅ Installs Poetry with correct Python version  
-- ✅ Manages all dependencies
-- ✅ Handles Hugging Face authentication
-- ✅ Downloads models (25GB - be patient!)
-- ✅ Starts the server
+The script handles everything automatically: Poetry installation, dependencies, model downloads (~25GB), and server startup.
 
-### What You Need
-
-- **macOS** with Apple Silicon (M1/M2/M3 MacBook)
-- **Python 3.12** (`brew install python@3.12`) 
-- **16GB+ RAM** (models require significant memory)
-- **25GB+ free disk space** (for model downloads)
-- **Hugging Face account** (free - script will help you set up)
-
-### First Run Process
-
-When you run `./start_server.sh` for the first time:
-
-#### 1. Authentication (Required for MedGemma)
-- Script will prompt you to login to Hugging Face
-- Visit: https://huggingface.co/google/medgemma-4b-it  
-- Accept the Health AI Developer Foundation terms
-- Get your token from: https://huggingface.co/settings/tokens
-- Paste token when prompted
-
-#### 2. Model Download (~25GB)
-- Phi-3: ~7GB download
-- MedGemma: ~18GB download
-- Models cached locally after first download
-
-#### 3. Server Starts
-- FastAPI server runs on `http://127.0.0.1:3000`
-- Ready to accept chat requests!
-
-## System Prompt Architecture
-
-The application uses an intelligent **4-layer system prompt system** for optimal model behavior:
-
-### How System Prompts Work Together
-
-**1. Model Defaults (Built-in)**
-- **Phi-3**: General-purpose conversational AI
-- **MedGemma**: Medical-focused responses with evidence-based information
-
-**2. User Selection (Customizable)**
-- 💬 **Default**: Uses model-optimized defaults only
-- 🤝 **Helpful**: Emphasizes helpfulness and honesty
-- 🏥 **Medical**: Educational medical information (not advice)  
-- 🔬 **Researcher**: Evidence-based, well-researched responses
-- ✏️ **Custom**: Write your own system prompt
-
-**3. Response Optimization (Automatic)**
-- Ensures markdown formatting for better readability
-- Prevents response cutoffs mid-sentence
-- Includes appropriate disclaimers for medical content
-- Optimizes response length (400-800 words for medical topics)
-
-**Final Prompt Structure:**
-```
-[Model-specific defaults] + [Your customization] + [Response guidance]
-```
-
-**Smart Token Management:**
-- Automatically manages token limits (800 for MedGemma, 1000 for Phi-3)
-- Prioritizes response guidance (never truncated)
-- Gracefully handles long custom prompts
-- Based on [prompt optimization research](https://medium.com/data-science-in-your-pocket/claudes-system-prompt-explained-d9b7989c38a3)
-
-## Open Client
-Open `client/index.html` in your browser or run:
-```bash
-cd client && python3 -m http.server 8000
-# Then visit: http://localhost:8000
-```
+### First Run
+1. **Hugging Face Login**: You'll be prompted to authenticate (required for MedGemma)
+   - Visit [MedGemma page](https://huggingface.co/google/medgemma-4b-it) and accept terms
+   - Get token from [settings](https://huggingface.co/settings/tokens)
+   - Paste when prompted
+2. **Model Download**: ~25GB total (one-time, cached locally)
+3. **Server Starts**: http://127.0.0.1:3000
 
 ## Usage
 
-1. **Choose Model**: Select **Phi-3** (general) or **MedGemma** (medical)
-2. **Set System Prompt**: Pick from presets or write custom instructions
-3. **Ask Questions**: Type your question and send
+1. Open `client/index.html` in your browser
+2. Select a model:
+   - **📱 Gemma 3 1B**: Ultra-fast general chat (1-3s responses, English-only)
+   - **🏥 MedGemma**: Medical Q&A with disclaimers (3-8s responses)
+3. Choose a system prompt preset or write your own
+4. Start chatting!
 
-**Examples:**
-- **Phi-3 + Researcher**: "Explain quantum computing with recent research"
-- **MedGemma + Medical**: "What are the diagnostic criteria for diabetes?"
-- **Phi-3 + Custom**: "Act as a Python tutor and explain functions"
+### Example Prompts
+- General: "Explain quantum computing in simple terms"
+- Medical: "What are the symptoms of dehydration?"
+- Custom: "Act as a Python tutor and explain list comprehensions"
 
-## Performance Optimization
+## Performance
 
-The system includes several performance optimizations for Apple Silicon:
+Optimized for Apple Silicon with:
+- Metal Performance Shaders (MPS) acceleration
+- bfloat16 precision for speed and stability
+- Smart memory management
+- Context-aware token limits
 
-### **Automatic Optimizations**
-- ✅ **Metal Performance Shaders (MPS)** - GPU acceleration on Apple Silicon
-- ✅ **Eager Attention** - Optimized for Apple Silicon and Gemma model compatibility
-- ✅ **Fast Image Processor** - Optimized medical image processing for MedGemma
-- ✅ **bfloat16 precision** - Better numerical stability + speed
-- ✅ **KV Caching** - Reuse computations across requests
-- ✅ **Optimized generation parameters** - Tuned for speed vs quality
+**Expected response times** (M2/M3 MacBook):
+- Gemma 3 1B: 1-3 seconds
+- MedGemma: 3-8 seconds
 
-### **Performance Tips**
+## Configuration
 
-**For Best Performance:**
-1. **Close other apps** - Free up RAM for models (need 16GB+)
-2. **Use shorter prompts** - Faster processing, less context
-3. **Clear history periodically** - Reduces context length overhead
-4. **Keep system cool** - Thermal throttling affects performance
+### Switch Models
 
-**Expected Performance (M2/M3 MacBook Pro):**
-- **Phi-3**: ~2-5 seconds per response
-- **MedGemma**: ~3-8 seconds per response  
-- **First response**: Slower due to model warmup
+Edit `MODEL_CONFIG` in `server/main.py`:
 
-### **Install Performance Packages** (Optional)
-
-For maximum performance, install additional optimization packages:
-
-```bash
-# After first successful run, add optional performance packages
-poetry install --extras performance
-
-# Performance extras include:
-# - optimum: Hugging Face performance optimizations  
-# - bitsandbytes: Memory-efficient quantization (optional)
+```python
+"general": {
+    "model_id": "google/gemma-2-2b-it",  # Change to any model
+    "display_name": "Gemma 2 2B",
+    # ...
+}
 ```
 
-## Manual Poetry Setup (Advanced Users Only)
+**Popular alternatives**:
+- `google/gemma-2-2b-it` - Better performance, 2B params
+- `microsoft/Phi-3-mini-4k-instruct` - Microsoft's 3.8B model
+- `mistralai/Mistral-7B-Instruct-v0.2` - Powerful 7B model
 
-If the automatic setup doesn't work, you can install Poetry manually:
+### Add New Models
 
-### Option A: Install with specific Python version
-```bash
-curl -sSL https://install.python-poetry.org | python3.12 -
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+```python
+"coding": {
+    "enabled": True,
+    "model_id": "google/codegemma-2b",
+    "display_name": "CodeGemma",
+    "icon": "💻",
+    # ...
+}
 ```
 
-### Option B: Install via pipx
+## Memory Management
+
+Models use ~20GB RAM when loaded. Memory is managed automatically by PyTorch/Python for optimal performance. 
+
+If you experience memory issues:
+
 ```bash
-brew install pipx
-pipx ensurepath
-pipx install poetry
+# Check memory usage
+curl http://127.0.0.1:3000/health | jq .memory
+
+# Manual cleanup (only when needed)
+curl -X POST http://127.0.0.1:3000/memory/cleanup
+
+# Or just restart the server
 ```
 
-### Verify Installation
-```bash
-poetry --version
-poetry env info
-poetry env use python3.12  # If needed
-```
+**Note**: Automatic cleanup was removed in v1.1 as it was causing 30-60 second delays.
 
 ## Troubleshooting
 
-### Automatic Setup Issues
+### Setup Issues
 
-**"Python 3.9-3.12 not found"**:
+**Python not found**:
 ```bash
-# Install Python 3.12 via Homebrew
 brew install python@3.12
-
-# Verify installation
 python3.12 --version
 ```
 
-**"Poetry installation failed"**:
+**Poetry issues**:
 ```bash
-# Try manual installation
+# Manual install
 curl -sSL https://install.python-poetry.org | python3.12 -
 export PATH="$HOME/.local/bin:$PATH"
-
-# Then restart the script
-./start_server.sh
 ```
-
-**Script can't find Python**:
-```bash
-# Check where Python is installed
-which python3.12
-which python3
-
-# If using Homebrew Python, it should be in:
-ls -la /opt/homebrew/bin/python*
-```
-
-### Poetry/Python Issues (Manual Setup)
-
-**"Poetry not found"**: 
-- Restart terminal after installation
-- Check: `echo $PATH` should include `$HOME/.local/bin`
-- Manually add: `export PATH="$HOME/.local/bin:$PATH"`
-
-**Wrong Python version in Poetry**:
-```bash
-# Check current Python
-poetry env info
-
-# Set correct Python (try these in order)
-poetry env use python3.12
-poetry env use /opt/homebrew/bin/python3.12
-poetry env use /usr/local/bin/python3.12
-
-# Force recreate environment
-poetry env remove python
-poetry install
-```
-
-**"pyproject.toml changed significantly"**:
-```bash
-poetry lock --no-update
-poetry install
-```
-
-**Python 3.13 compatibility issues**:
-- Install Python 3.12: `brew install python@3.12`
-- Set Poetry to use it: `poetry env use python3.12`
-- NumPy/PyTorch don't fully support 3.13 yet
 
 ### Performance Issues
 
-**Slow responses (>10 seconds)**:
+- **Slow responses**: Check Activity Monitor for memory pressure
+- **Very slow (>60s)**: Fixed in v1.1 - was caused by aggressive memory cleanup
+- **First response slow**: Normal - models warming up
+- **Gemma 3 1B**: Optimized for 1-3 second responses with greedy decoding
+
+### Common Errors
+
+- **Connection refused**: Server not running, check terminal
+- **Out of memory**: Close other apps, need 16GB+ free
+- **Authentication failed**: Accept MedGemma license on Hugging Face
+
+## Advanced
+
+### Manual Setup
 ```bash
-# Check system resources
-Activity Monitor → Memory tab → Memory Pressure should be green
-
-# Free up RAM
-sudo purge  # Clear system caches
-
-# Check thermal throttling  
-sudo powermetrics --samplers smc -n 1 | grep -i temp
+poetry install
+poetry run python server/main.py
 ```
 
-**Models not using MPS (GPU)**:  
-- Check: Server logs should show "✅ MPS Available"
-- If not: Update PyTorch: `poetry add torch --latest`
+### Performance Packages
+```bash
+poetry install --extras performance
+```
 
-**Attention implementation**:
-- Uses **eager attention** by default (recommended for Gemma models)
-- Optimized for Apple Silicon MPS
-- No additional installation needed
+### System Prompts
+The app uses a 4-layer prompt system:
+1. Model defaults (built-in)
+2. User selection (presets/custom)
+3. Response optimization (automatic)
+4. Smart token management
 
-### Runtime Issues
-
-**"Connection refused" errors**: Server not running - check terminal for errors
-
-**Out of memory**: Close other apps, ensure 16GB+ RAM available
-
-**Model download fails**: Check internet connection and disk space
-
-**Authentication issues**: Ensure you accepted MedGemma license terms
-
-**Very slow first response**: Models loading into memory (normal)
+See [prompt optimization research](https://medium.com/data-science-in-your-pocket/claudes-system-prompt-explained-d9b7989c38a3) for details.

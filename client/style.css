@@ -69,7 +69,7 @@ body {
 
 .model-message .message-content {
     background: var(--pico-card-background-color, #f8f9fa);
-    color: var(--pico-color, #212529);
+    color: var(--pico-color, #e2e5e8);
     border: 1px solid var(--pico-border-color, #dee2e6);
     border-bottom-left-radius: 0.25rem;
 }

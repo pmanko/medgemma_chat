@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearHistoryButton = document.getElementById('clear-history');
     
     // Current selections
-    let selectedModel = 'phi3';
+    let selectedModel = 'general';
     let selectedSystemPrompt = 'default';
     let customSystemPrompt = '';
     
@@ -404,7 +404,7 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
     // Check server health on startup
     checkServerHealth().then(health => {
         if (health) {
-            console.log(`Server healthy. Models: Phi-3 (${health.models.phi3}), MedGemma (${health.models.medgemma})`);
+            console.log(`Server healthy. Models: General (${health.models.general}), MedGemma (${health.models.medgemma})`);
         } else {
             console.warn('Server health check failed - may be starting up');
         }
