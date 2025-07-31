@@ -52,6 +52,40 @@ When you run `./start_server.sh` for the first time:
 - FastAPI server runs on `http://127.0.0.1:3000`
 - Ready to accept chat requests!
 
+## System Prompt Architecture
+
+The application uses an intelligent **4-layer system prompt system** for optimal model behavior:
+
+### How System Prompts Work Together
+
+**1. Model Defaults (Built-in)**
+- **Phi-3**: General-purpose conversational AI
+- **MedGemma**: Medical-focused responses with evidence-based information
+
+**2. User Selection (Customizable)**
+- 💬 **Default**: Uses model-optimized defaults only
+- 🤝 **Helpful**: Emphasizes helpfulness and honesty
+- 🏥 **Medical**: Educational medical information (not advice)  
+- 🔬 **Researcher**: Evidence-based, well-researched responses
+- ✏️ **Custom**: Write your own system prompt
+
+**3. Response Optimization (Automatic)**
+- Ensures markdown formatting for better readability
+- Prevents response cutoffs mid-sentence
+- Includes appropriate disclaimers for medical content
+- Optimizes response length (400-800 words for medical topics)
+
+**Final Prompt Structure:**
+```
+[Model-specific defaults] + [Your customization] + [Response guidance]
+```
+
+**Smart Token Management:**
+- Automatically manages token limits (800 for MedGemma, 1000 for Phi-3)
+- Prioritizes response guidance (never truncated)
+- Gracefully handles long custom prompts
+- Based on [prompt optimization research](https://medium.com/data-science-in-your-pocket/claudes-system-prompt-explained-d9b7989c38a3)
+
 ## Open Client
 Open `client/index.html` in your browser or run:
 ```bash
@@ -61,11 +95,14 @@ cd client && python3 -m http.server 8000
 
 ## Usage
 
-Select **Phi-3** for general questions or **MedGemma** for medical questions, then type and send.
+1. **Choose Model**: Select **Phi-3** (general) or **MedGemma** (medical)
+2. **Set System Prompt**: Pick from presets or write custom instructions
+3. **Ask Questions**: Type your question and send
 
 **Examples:**
-- Phi-3: "Explain quantum computing" 
-- MedGemma: "What are symptoms of diabetes?"
+- **Phi-3 + Researcher**: "Explain quantum computing with recent research"
+- **MedGemma + Medical**: "What are the diagnostic criteria for diabetes?"
+- **Phi-3 + Custom**: "Act as a Python tutor and explain functions"
 
 ## Performance Optimization
 
