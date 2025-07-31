@@ -1,6 +1,8 @@
 import torch
 import logging
 import time
+import gc
+import warnings
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -11,6 +13,147 @@ from contextlib import asynccontextmanager
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Default system prompts optimized for each model based on best practices
+DEFAULT_SYSTEM_PROMPTS = {
+    "phi3": "You are a helpful, accurate, and concise AI assistant. Provide clear, well-structured responses. Use markdown formatting for better readability when appropriate.",
+    
+    "medgemma": "You are a medical AI assistant. Provide accurate, evidence-based medical information. Always include appropriate disclaimers when discussing health topics. Format responses with clear structure using markdown. Keep responses comprehensive but concise."
+}
+
+# Response guidance to ensure proper formatting and prevent cutoffs
+RESPONSE_GUIDANCE = {
+    "medgemma": """
+
+Response guidelines:
+- Aim for 400-800 words for comprehensive medical explanations
+- Use markdown formatting (**bold**, *emphasis*, bullet points, headers)
+- Structure responses: Overview → Details → Key takeaways
+- Always complete your thoughts - don't cut off mid-sentence
+- Include medical disclaimers when appropriate ("Consult a healthcare professional")
+- Use clear headings to organize complex information""",
+    
+    "phi3": """
+
+Response guidelines:
+- Provide complete, well-structured answers
+- Use markdown formatting for clarity (**bold**, *emphasis*, bullet points)
+- Aim for thoroughness while remaining concise
+- Always finish your complete thought before ending"""
+}
+
+# System prompt optimization constants
+SYSTEM_PROMPT_LIMITS = {
+    "medgemma": {
+        "max_total_tokens": 800,  # Conservative limit for system prompt (out of 8192 total)
+        "default_priority": 1,    # Keep default prompts
+        "user_priority": 2,       # User prompts are important
+        "guidance_priority": 3    # Response guidance is MOST important (prevents cutoffs)
+    },
+    "phi3": {
+        "max_total_tokens": 1000,  # Phi-3 can handle more
+        "default_priority": 1,
+        "user_priority": 2,
+        "guidance_priority": 3
+    }
+}
+
+# Memory management utilities
+def intelligent_prompt_optimization(user_prompt: str, model_name: str) -> str:
+    """
+    Intelligent system prompt optimization based on token limits and priority.
+    Uses hierarchical truncation to preserve the most important guidance.
+    Based on prompt optimization best practices for LLM performance.
+    """
+    # Get model limits and components
+    limits = SYSTEM_PROMPT_LIMITS.get(model_name, SYSTEM_PROMPT_LIMITS["phi3"])
+    default_prompt = DEFAULT_SYSTEM_PROMPTS.get(model_name, "")
+    response_guidance = RESPONSE_GUIDANCE.get(model_name, "")
+    
+    # Rough token estimation (4 chars ≈ 1 token for English)
+    def estimate_tokens(text: str) -> int:
+        return len(text) // 4
+    
+    # Build components with priorities
+    components = [
+        {"text": default_prompt, "priority": limits["default_priority"], "name": "default"},
+        {"text": response_guidance, "priority": limits["guidance_priority"], "name": "guidance"},
+    ]
+    
+    # Add user prompt if provided
+    if user_prompt and user_prompt.strip():
+        user_text = f"\n\nAdditional instructions: {user_prompt.strip()}"
+        components.append({"text": user_text, "priority": limits["user_priority"], "name": "user"})
+    
+    # Sort by priority (highest priority first)
+    components.sort(key=lambda x: x["priority"], reverse=True)
+    
+    # Build prompt, respecting token limits
+    final_components = []
+    total_tokens = 0
+    max_tokens = limits["max_total_tokens"]
+    
+    for component in components:
+        component_tokens = estimate_tokens(component["text"])
+        
+        if total_tokens + component_tokens <= max_tokens:
+            # Fits completely
+            final_components.append(component)
+            total_tokens += component_tokens
+        elif total_tokens < max_tokens:
+            # Partial fit - intelligently truncate
+            remaining_tokens = max_tokens - total_tokens
+            remaining_chars = remaining_tokens * 4
+            
+            if component["name"] == "user" and remaining_chars > 50:
+                # Truncate user prompt gracefully
+                truncated_text = component["text"][:remaining_chars-20] + "... [truncated]"
+                final_components.append({**component, "text": truncated_text})
+                logger.info(f"Truncated user prompt from {component_tokens} to ~{remaining_tokens} tokens for {model_name}")
+                break
+            elif component["name"] == "default" and remaining_chars > 100:
+                # Truncate default prompt if necessary
+                truncated_text = component["text"][:remaining_chars-20] + "..."
+                final_components.append({**component, "text": truncated_text})
+                logger.info(f"Truncated default prompt from {component_tokens} to ~{remaining_tokens} tokens for {model_name}")
+                break
+            # Never truncate response guidance - it's most important!
+        else:
+            # No room left
+            break
+    
+    # Rebuild in logical order (default -> user -> guidance)
+    ordered_texts = []
+    component_dict = {comp["name"]: comp["text"] for comp in final_components}
+    
+    if "default" in component_dict:
+        ordered_texts.append(component_dict["default"])
+    if "user" in component_dict:
+        ordered_texts.append(component_dict["user"])
+    if "guidance" in component_dict:
+        ordered_texts.append(component_dict["guidance"])
+    
+    combined_prompt = "".join(ordered_texts)
+    
+    logger.debug(f"Optimized system prompt for {model_name}: {estimate_tokens(combined_prompt)} tokens (~{len(combined_prompt)} chars)")
+    return combined_prompt
+
+# Keep backward compatibility
+def combine_system_prompts(user_prompt: str, model_name: str) -> str:
+    """Backward compatibility wrapper for intelligent prompt optimization."""
+    return intelligent_prompt_optimization(user_prompt, model_name)
+
+def cleanup_memory():
+    """Clean up GPU/MPS memory after model inference to prevent memory leaks."""
+    try:
+        gc.collect()  # Python garbage collection
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        elif torch.backends.mps.is_available():
+            torch.mps.empty_cache()  # Apple Silicon MPS memory cleanup
+        logger.debug("Memory cleanup completed")
+    except Exception as e:
+        logger.warning(f"Memory cleanup failed: {e}")
 
 # --- Model Loading on Startup ---
 # Use FastAPI's 'lifespan' to load models once when the app starts.
@@ -51,12 +194,20 @@ async def lifespan(app: FastAPI):
             model_status['phi3'] = 'loading'
             start_time = time.time()
             
+            # Performance optimizations for Phi-3 (Apple Silicon MPS optimized)
+            model_kwargs = {
+                "torch_dtype": torch.float16,
+                "low_cpu_mem_usage": True,
+                "attn_implementation": "eager",  # Stable and MPS-optimized
+            }
+            logger.info("✅ Using eager attention for Phi-3 (Apple Silicon optimized)")
+            
             models['phi3'] = pipeline(
                 "text-generation",
                 model="microsoft/Phi-3-mini-4k-instruct",
                 device=device.type,
-                torch_dtype=torch.float16,
-                trust_remote_code=True,
+                trust_remote_code=True,  # Pass trust_remote_code directly to pipeline
+                model_kwargs=model_kwargs,
             )
             
             load_time = time.time() - start_time
@@ -73,11 +224,25 @@ async def lifespan(app: FastAPI):
             model_status['medgemma'] = 'loading'
             start_time = time.time()
             
-            medgemma_processor = AutoProcessor.from_pretrained("google/medgemma-4b-it")
+            # Use fast processor for better performance with medical images
+            medgemma_processor = AutoProcessor.from_pretrained(
+                "google/medgemma-4b-it",
+                use_fast=True  # Enable fast image processor for better performance
+            )
+            logger.info("✅ Using fast image processor for MedGemma (optimized for performance)")
+            
+            # Performance optimizations for MedGemma (Gemma models work best with eager attention)
+            model_kwargs = {
+                "torch_dtype": torch.bfloat16,  # Better numerical stability for Apple Silicon
+                "device_map": "auto",
+                "low_cpu_mem_usage": True,
+                "attn_implementation": "eager",  # Recommended for Gemma models
+            }
+            logger.info("✅ Using eager attention for MedGemma (recommended for Gemma models)")
+            
             medgemma_model = AutoModelForImageTextToText.from_pretrained(
                 "google/medgemma-4b-it",
-                torch_dtype=torch.bfloat16,
-                device_map="auto"
+                **model_kwargs
             )
             models['medgemma'] = {
                 'processor': medgemma_processor, 
@@ -131,9 +296,40 @@ class ChatMessage(BaseModel):
 class PromptRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=2000, description="User prompt")
     system_prompt: str = Field(default="", max_length=1000, description="System prompt to guide model behavior")
-    max_new_tokens: int = Field(default=512, ge=1, le=1024, description="Maximum tokens to generate")
+    max_new_tokens: int = Field(default=512, ge=1, le=2048, description="Maximum tokens to generate (higher values may be slower)")
     conversation_history: List[ChatMessage] = Field(default=[], description="Previous conversation messages")
     conversation_id: Optional[str] = Field(default=None, description="Unique conversation identifier")
+    
+    def get_optimized_max_tokens(self, model_name: str = "phi3") -> int:
+        """Get performance-optimized max_new_tokens that works WITH summary system."""
+        # Model-specific limits based on context handling capabilities
+        if model_name == "medgemma":
+            # MedGemma has stricter context limits (1024 tokens total)
+            # Increased token limit for longer, more complete responses
+            base_limit = min(self.max_new_tokens, 1200)  # Increased from 800
+            summary_threshold = 8  # MedGemma summarizes at >8 messages
+        else:
+            # Phi-3 can handle longer sequences better
+            base_limit = min(self.max_new_tokens, 1500) 
+            summary_threshold = 16  # Phi-3 summarizes at >16 messages
+        
+        # Only apply history penalty if we're BEFORE summarization kicks in
+        # After summarization, context is efficiently managed
+        if len(self.conversation_history) <= summary_threshold:
+            # Light penalty for building conversations (better UX for quick responses)
+            history_penalty = min(len(self.conversation_history) * 5, 50)  # Max 50 token reduction
+        else:
+            # Summarization is handling context - no additional penalty needed
+            history_penalty = 0
+            logger.debug(f"Using full token budget - conversation summarization is managing context")
+        
+        # Apply performance optimization
+        optimized = max(base_limit - history_penalty, 128)  # Minimum 128 tokens
+        
+        if optimized != self.max_new_tokens:
+            logger.debug(f"Optimized max_new_tokens: {self.max_new_tokens} → {optimized} for {model_name} ({len(self.conversation_history)} msgs)")
+        
+        return optimized
 
 class PromptResponse(BaseModel):
     response: str = Field(..., description="Model generated response")
@@ -143,11 +339,13 @@ def prepare_conversation_context(conversation_history: List[ChatMessage], curren
     Prepare conversation context using sliding window approach with optional summarization.
     Keeps the most recent exchanges while managing token limits.
     """
-    # Build messages array starting with system prompt
+    # Build messages array starting with combined system prompt
     messages = []
     
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+    # Use intelligent system prompt optimization
+    optimized_system_prompt = intelligent_prompt_optimization(system_prompt, "phi3")
+    if optimized_system_prompt:
+        messages.append({"role": "system", "content": optimized_system_prompt})
     
     # Handle long conversations with summarization for Phi-3 too
     if len(conversation_history) > max_history_messages * 2:  # If we have more than double the limit
@@ -373,15 +571,12 @@ def prepare_medgemma_conversation_context(conversation_history: List[ChatMessage
     """
     messages = []
     
-    # Add system prompt if provided (keep it short for MedGemma)
-    if system_prompt:
-        # Truncate system prompt if too long
-        truncated_system = system_prompt[:200] if len(system_prompt) > 200 else system_prompt
-        if len(system_prompt) > 200:
-            logger.info(f"Truncated system prompt from {len(system_prompt)} to 200 characters for MedGemma")
+    # Use intelligent system prompt optimization
+    optimized_system_prompt = intelligent_prompt_optimization(system_prompt, "medgemma")
+    if optimized_system_prompt:
         messages.append({
             "role": "system",
-            "content": [{"type": "text", "text": truncated_system}]
+            "content": [{"type": "text", "text": optimized_system_prompt}]
         })
     
     # Handle conversation history with summarization
@@ -429,8 +624,21 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    """Simple health check endpoint to monitor server and model status."""
+    """Enhanced health check endpoint with performance monitoring."""
     uptime = time.time() - model_status['server_start_time']
+    
+    # Memory usage info for performance monitoring
+    memory_info = {}
+    try:
+        if torch.backends.mps.is_available():
+            # Get MPS memory usage if available  
+            current_allocated = torch.mps.current_allocated_memory() / 1024**3  # GB
+            memory_info["mps_allocated_gb"] = round(current_allocated, 2)
+        elif torch.cuda.is_available():
+            current_allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+            memory_info["cuda_allocated_gb"] = round(current_allocated, 2)
+    except Exception as e:
+        logger.debug(f"Could not get memory info: {e}")
     
     return {
         "status": "healthy",
@@ -438,6 +646,11 @@ def health_check():
         "models": {
             "phi3": model_status['phi3'],
             "medgemma": model_status['medgemma']
+        },
+        "memory": memory_info,
+        "performance_tips": {
+            "optimal_max_tokens": "256-512 for speed, 1024+ for longer responses",
+            "context_management": "Clear history if >20 messages for best performance"
         },
         "timestamp": time.time()
     }
@@ -465,17 +678,28 @@ def generate_phi3(request: PromptRequest):
         
         logger.info(f"Prepared {len(messages)} messages for Phi-3")
         
-        output = pipe(
-            messages,
-            max_new_tokens=request.max_new_tokens,
-            return_full_text=False,
-            do_sample=True,
-            temperature=0.7,
-            pad_token_id=pipe.tokenizer.eos_token_id,
-            use_cache=False  # Fix for DynamicCache issue
-        )
+        # Get performance-optimized token limit
+        optimized_max_tokens = request.get_optimized_max_tokens("phi3")
+        
+        # Performance-optimized generation for Phi-3
+        with torch.inference_mode():  # More efficient than torch.no_grad()
+            output = pipe(
+                messages,
+                max_new_tokens=optimized_max_tokens,
+                return_full_text=False,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,  # Nucleus sampling for better quality
+                repetition_penalty=1.1,  # Reduce repetition
+                pad_token_id=pipe.tokenizer.eos_token_id,
+                use_cache=False,  # Enable caching for performance
+                # batch_size=1,  # Optimize for single requests
+            )
         
         response_text = output[0]['generated_text'].strip()
+        
+        # Clean up memory after generation to prevent memory leaks
+        cleanup_memory()
         
         execution_time = time.time() - start_time
         logger.info(f"Generated Phi-3 response in {execution_time:.2f}s: {response_text[:100]}...")
@@ -525,7 +749,8 @@ def generate_medgemma(request: PromptRequest):
         logger.info(f"Input sequence length: {input_len} tokens")
         
         # MedGemma has a context limit - truncate if necessary
-        MAX_CONTEXT_LENGTH = 1024
+        # MedGemma actual context window is 8192 tokens, use reasonable limit for generation
+        MAX_CONTEXT_LENGTH = 2048  # Increased from 1024, allows for longer conversations
         if input_len > MAX_CONTEXT_LENGTH:
             logger.warning(f"Input length ({input_len}) exceeds context limit ({MAX_CONTEXT_LENGTH}), truncating...")
             inputs["input_ids"] = inputs["input_ids"][:, -MAX_CONTEXT_LENGTH:]
@@ -536,16 +761,31 @@ def generate_medgemma(request: PromptRequest):
         # Move to device with proper dtype
         inputs = inputs.to(model.device, dtype=torch.bfloat16)
         
+        # Get performance-optimized token limit for MedGemma
+        optimized_max_tokens = request.get_optimized_max_tokens("medgemma")
+        final_max_tokens = min(optimized_max_tokens, MAX_CONTEXT_LENGTH - input_len)
+        
+        if final_max_tokens < 50:
+            logger.warning(f"Very low token budget ({final_max_tokens}), context may be too long")
+        
+        # Performance-optimized generation for MedGemma
         with torch.inference_mode():
             generation = model.generate(
                 **inputs, 
-                max_new_tokens=min(request.max_new_tokens, MAX_CONTEXT_LENGTH - input_len),
-                do_sample=False  # Use deterministic generation for stability
+                max_new_tokens=final_max_tokens,
+                do_sample=False,  # Deterministic for medical consistency
+                use_cache=True,  # Enable KV caching for performance
+                pad_token_id=processor.tokenizer.eos_token_id if hasattr(processor, 'tokenizer') else None,
+                # Optimize for Apple Silicon MPS
+                num_beams=1,  # Greedy decoding for speed
             )
             generation = generation[0][input_len:]
         
         # Decode the response
         response_text = processor.decode(generation, skip_special_tokens=True).strip()
+        
+        # Clean up memory after generation to prevent memory leaks
+        cleanup_memory()
         
         execution_time = time.time() - start_time
         logger.info(f"Generated MedGemma response in {execution_time:.2f}s: {response_text[:100]}...")

@@ -243,3 +243,103 @@ nav h1 {
         width: 100%;
     }
 }
+
+/* Markdown rendering styles for model responses */
+.model-message .message-content h1, 
+.model-message .message-content h2, 
+.model-message .message-content h3, 
+.model-message .message-content h4, 
+.model-message .message-content h5, 
+.model-message .message-content h6 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.model-message .message-content h1 {
+    font-size: 1.25rem;
+    border-bottom: 2px solid var(--pico-muted-border-color);
+    padding-bottom: 0.25rem;
+}
+
+.model-message .message-content h2 {
+    font-size: 1.1rem;
+}
+
+.model-message .message-content h3 {
+    font-size: 1rem;
+}
+
+.model-message .message-content ul, 
+.model-message .message-content ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.model-message .message-content li {
+    margin-bottom: 0.25rem;
+}
+
+.model-message .message-content p {
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+}
+
+.model-message .message-content strong {
+    font-weight: 600;
+    color: var(--pico-primary);
+}
+
+.model-message .message-content em {
+    font-style: italic;
+    color: var(--pico-muted-color);
+}
+
+.model-message .message-content code {
+    background: var(--pico-code-background-color);
+    color: var(--pico-code-color);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-family: var(--pico-font-family-monospace);
+    font-size: 0.875rem;
+}
+
+.model-message .message-content pre {
+    background: var(--pico-code-background-color);
+    color: var(--pico-code-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.model-message .message-content pre code {
+    background: none;
+    padding: 0;
+}
+
+.model-message .message-content blockquote {
+    border-left: 3px solid var(--pico-primary);
+    padding-left: 1rem;
+    margin: 1rem 0;
+    color: var(--pico-muted-color);
+    font-style: italic;
+}
+
+.model-message .message-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+.model-message .message-content th, 
+.model-message .message-content td {
+    padding: 0.5rem;
+    border: 1px solid var(--pico-muted-border-color);
+    text-align: left;
+}
+
+.model-message .message-content th {
+    background: var(--pico-secondary-background);
+    font-weight: 600;
+}

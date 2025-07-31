@@ -181,10 +181,24 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('message-content');
         
-        // Sanitize content to prevent HTML injection
-        const p = document.createElement('p');
-        p.textContent = messageContent;
-        contentDiv.appendChild(p);
+        // Use markdown rendering for model responses, plain text for others
+        if (sender === 'model' && typeof marked !== 'undefined') {
+            // Render markdown for model responses
+            try {
+                const renderedMarkdown = marked.parse(messageContent);
+                contentDiv.innerHTML = renderedMarkdown;
+            } catch (error) {
+                console.warn('Markdown rendering failed, falling back to plain text:', error);
+                const p = document.createElement('p');
+                p.textContent = messageContent;
+                contentDiv.appendChild(p);
+            }
+        } else {
+            // Use plain text for user and system messages to prevent HTML injection
+            const p = document.createElement('p');
+            p.textContent = messageContent;
+            contentDiv.appendChild(p);
+        }
 
         if (isLoading) {
             contentDiv.classList.add('loading-indicator');

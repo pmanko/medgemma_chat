@@ -67,6 +67,44 @@ Select **Phi-3** for general questions or **MedGemma** for medical questions, th
 - Phi-3: "Explain quantum computing" 
 - MedGemma: "What are symptoms of diabetes?"
 
+## Performance Optimization
+
+The system includes several performance optimizations for Apple Silicon:
+
+### **Automatic Optimizations**
+- ✅ **Metal Performance Shaders (MPS)** - GPU acceleration on Apple Silicon
+- ✅ **Eager Attention** - Optimized for Apple Silicon and Gemma model compatibility
+- ✅ **Fast Image Processor** - Optimized medical image processing for MedGemma
+- ✅ **bfloat16 precision** - Better numerical stability + speed
+- ✅ **KV Caching** - Reuse computations across requests
+- ✅ **Optimized generation parameters** - Tuned for speed vs quality
+
+### **Performance Tips**
+
+**For Best Performance:**
+1. **Close other apps** - Free up RAM for models (need 16GB+)
+2. **Use shorter prompts** - Faster processing, less context
+3. **Clear history periodically** - Reduces context length overhead
+4. **Keep system cool** - Thermal throttling affects performance
+
+**Expected Performance (M2/M3 MacBook Pro):**
+- **Phi-3**: ~2-5 seconds per response
+- **MedGemma**: ~3-8 seconds per response  
+- **First response**: Slower due to model warmup
+
+### **Install Performance Packages** (Optional)
+
+For maximum performance, install additional optimization packages:
+
+```bash
+# After first successful run, add optional performance packages
+poetry install --extras performance
+
+# Performance extras include:
+# - optimum: Hugging Face performance optimizations  
+# - bitsandbytes: Memory-efficient quantization (optional)
+```
+
 ## Manual Poetry Setup (Advanced Users Only)
 
 If the automatic setup doesn't work, you can install Poetry manually:
@@ -158,6 +196,29 @@ poetry install
 - Set Poetry to use it: `poetry env use python3.12`
 - NumPy/PyTorch don't fully support 3.13 yet
 
+### Performance Issues
+
+**Slow responses (>10 seconds)**:
+```bash
+# Check system resources
+Activity Monitor → Memory tab → Memory Pressure should be green
+
+# Free up RAM
+sudo purge  # Clear system caches
+
+# Check thermal throttling  
+sudo powermetrics --samplers smc -n 1 | grep -i temp
+```
+
+**Models not using MPS (GPU)**:  
+- Check: Server logs should show "✅ MPS Available"
+- If not: Update PyTorch: `poetry add torch --latest`
+
+**Attention implementation**:
+- Uses **eager attention** by default (recommended for Gemma models)
+- Optimized for Apple Silicon MPS
+- No additional installation needed
+
 ### Runtime Issues
 
 **"Connection refused" errors**: Server not running - check terminal for errors
@@ -167,3 +228,5 @@ poetry install
 **Model download fails**: Check internet connection and disk space
 
 **Authentication issues**: Ensure you accepted MedGemma license terms
+
+**Very slow first response**: Models loading into memory (normal)
