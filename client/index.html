@@ -25,6 +25,17 @@
                     <li>
                         <details class="dropdown">
                             <summary role="button">
+                                <span id="tab-mode">🧠 Direct</span>
+                            </summary>
+                            <ul>
+                                <li><a href="#" data-mode="direct">🧠 Direct (per-model)</a></li>
+                                <li><a href="#" data-mode="agents">🕸️ Agents (A2A)</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                    <li id="direct-controls">
+                        <details class="dropdown">
+                            <summary role="button">
                                 <span id="current-model">📱 Gemma 3 1B</span>
                             </summary>
                             <ul>
@@ -33,7 +44,7 @@
                             </ul>
                         </details>
                     </li>
-                    <li>
+                    <li id="prompt-controls">
                         <details class="dropdown">
                             <summary role="button" class="secondary">
                                 <span id="current-prompt">💬 Default</span>
@@ -51,7 +62,7 @@
             <div id="chat-window" class="chat-window">
                 <!-- Chat messages will be appended here by JavaScript -->
                 <article class="message-welcome">
-                    <p>👋 Welcome! Select a model and ask a question to get started.</p>
+                    <p>👋 Welcome! Select a mode and ask a question to get started.</p>
                 </article>
             </div>
         </main>

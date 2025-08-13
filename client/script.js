@@ -13,11 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const currentPromptSpan = document.getElementById('current-prompt');
     const systemPromptsContainer = document.getElementById('system-prompts');
     const clearHistoryButton = document.getElementById('clear-history');
+    const tabModeSpan = document.getElementById('tab-mode');
+    const directControls = document.getElementById('direct-controls');
+    const promptControls = document.getElementById('prompt-controls');
     
     // Current selections
     let selectedModel = 'general';
     let selectedSystemPrompt = 'default';
     let customSystemPrompt = '';
+    let mode = 'direct'; // 'direct' | 'agents'
     
     // Conversation history management
     let conversationHistory = [];
@@ -42,25 +46,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addToConversationHistory(role, content) {
-        // Prevent duplicate consecutive messages
         const lastMessage = conversationHistory[conversationHistory.length - 1];
         if (lastMessage && lastMessage.role === role && lastMessage.content === content) {
             console.log('Skipping duplicate message');
             return;
         }
-        
         const message = {
             role: role,
             content: content,
             timestamp: new Date().toISOString()
         };
         conversationHistory.push(message);
-        
-        // Keep conversation history manageable (last 20 messages)
         if (conversationHistory.length > 20) {
             conversationHistory = conversationHistory.slice(-20);
         }
-        
         console.log(`Added ${role} message to history. Total messages: ${conversationHistory.length}`);
     }
 
@@ -68,8 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
         conversationHistory = [];
         conversationId = generateConversationId();
         console.log('Conversation history cleared, new conversation started');
-        
-        // Add system message about clearing history
         addMessage('system', 'Conversation history cleared. Starting fresh conversation.');
     }
 
@@ -89,25 +86,33 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             selectedModel = e.target.dataset.model;
             currentModelSpan.textContent = e.target.textContent;
-            
             const dropdown = e.target.closest('details');
             if (dropdown) dropdown.open = false;
         }
-        
+
         if (e.target.matches('[data-prompt]')) {
             e.preventDefault();
             selectedSystemPrompt = e.target.dataset.prompt;
             currentPromptSpan.textContent = systemPrompts[selectedSystemPrompt].name;
-            
-            // Show custom prompt editor if "Custom" is selected
             if (selectedSystemPrompt === 'custom') {
                 showCustomPromptEditor();
             } else {
                 hideCustomPromptEditor();
             }
-            
             const dropdown = e.target.closest('details');
             if (dropdown) dropdown.open = false;
+        }
+
+        if (e.target.matches('[data-mode]')) {
+            e.preventDefault();
+            mode = e.target.dataset.mode; // 'direct' or 'agents'
+            tabModeSpan.textContent = mode === 'direct' ? '🧠 Direct' : '🕸️ Agents (A2A)';
+            // Toggle visibility of controls relevant to direct mode
+            directControls.style.display = mode === 'direct' ? 'block' : 'none';
+            promptControls.style.display = mode === 'direct' ? 'block' : 'none';
+            const dropdown = e.target.closest('details');
+            if (dropdown) dropdown.open = false;
+            addMessage('system', mode === 'direct' ? 'Switched to Direct mode.' : 'Switched to Agents (A2A) mode. Routing will be handled by agents.');
         }
     });
 
@@ -115,7 +120,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function showCustomPromptEditor() {
         let editor = document.getElementById('custom-prompt-editor');
         if (!editor) {
-            // Template prompt to help users get started
             const templatePrompt = customSystemPrompt || `You are a knowledgeable assistant with expertise in multiple domains. Please:
 
 - Provide accurate, well-researched information
@@ -139,14 +143,11 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
                 </div>
             `;
             chatWindow.parentNode.insertBefore(editor, chatWindow);
-            
-            // Add event listeners for the buttons
             document.getElementById('save-custom-prompt').addEventListener('click', () => {
                 customSystemPrompt = document.getElementById('custom-prompt-input').value;
                 addMessage('system', `Custom system prompt saved: "${customSystemPrompt || 'Empty'}"`);
                 hideCustomPromptEditor();
             });
-            
             document.getElementById('clear-custom-prompt').addEventListener('click', () => {
                 const resetTemplate = `You are a knowledgeable assistant with expertise in multiple domains. Please:
 
@@ -157,7 +158,6 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
 - Be honest about limitations or uncertainty
 
 Focus on being helpful while maintaining accuracy and professionalism.`;
-                
                 customSystemPrompt = '';
                 document.getElementById('custom-prompt-input').value = resetTemplate;
                 addMessage('system', 'Custom system prompt reset to template');
@@ -177,13 +177,9 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
     function addMessage(sender, messageContent, isLoading = false) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', `${sender}-message`);
-
         const contentDiv = document.createElement('div');
         contentDiv.classList.add('message-content');
-        
-        // Use markdown rendering for model responses, plain text for others
         if (sender === 'model' && typeof marked !== 'undefined') {
-            // Render markdown for model responses
             try {
                 const renderedMarkdown = marked.parse(messageContent);
                 contentDiv.innerHTML = renderedMarkdown;
@@ -194,30 +190,21 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
                 contentDiv.appendChild(p);
             }
         } else {
-            // Use plain text for user and system messages to prevent HTML injection
             const p = document.createElement('p');
             p.textContent = messageContent;
             contentDiv.appendChild(p);
         }
-
         if (isLoading) {
             contentDiv.classList.add('loading-indicator');
             messageDiv.id = 'loading-message';
         }
-
         messageDiv.appendChild(contentDiv);
         chatWindow.appendChild(messageDiv);
-
-        // Scroll to the bottom of the page to see the new message
         setTimeout(() => {
-            window.scrollTo({
-                top: document.body.scrollHeight,
-                behavior: 'smooth'
-            });
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }, 100);
     }
 
-    // --- Helper function to remove loading message ---
     function removeLoadingMessage() {
         const loadingMessage = document.getElementById('loading-message');
         if (loadingMessage) {
@@ -225,28 +212,18 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         }
     }
 
-    // --- Sleep utility for retry delays ---
-    function sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
+    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-    // --- Timeout wrapper for fetch requests ---
     function fetchWithTimeout(url, options, timeout = REQUEST_TIMEOUT) {
         return Promise.race([
             fetch(url, options),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Request timeout - model may be processing')), timeout)
-            )
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout - model may be processing')), timeout))
         ]);
     }
 
-    // --- Simple server health check ---
     async function checkServerHealth() {
         try {
-            const response = await fetch(`${SERVER_URL}/health`, {
-                method: 'GET',
-                timeout: 5000
-            });
+            const response = await fetch(`${SERVER_URL}/health`, { method: 'GET', timeout: 5000 });
             if (response.ok) {
                 const data = await response.json();
                 console.log('Server health:', data);
@@ -258,153 +235,114 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
         }
     }
 
-    // --- Send request with retry logic ---
-    async function sendRequestWithRetry(endpoint, prompt) {
+    async function sendRequestWithRetry(endpoint, bodyObj) {
         let lastError = null;
-        
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                // Add basic timing and status info
                 console.log(`Sending request to ${endpoint} (attempt ${attempt}/${MAX_RETRIES})`);
                 const startTime = Date.now();
-
                 const response = await fetchWithTimeout(endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ 
-                        prompt: prompt,
-                        system_prompt: getCurrentSystemPrompt(),
-                        conversation_history: conversationHistory,
-                        conversation_id: conversationId
-                    }),
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bodyObj),
                 });
-
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.detail || response.statusText);
                 }
-
                 const data = await response.json();
-                
-                // Log execution timing
                 const executionTime = Date.now() - startTime;
                 console.log(`Request completed in ${executionTime}ms`);
-                
-                // Success - remove loading and show response
                 removeLoadingMessage();
                 addMessage('model', data.response);
-                
-                // Add both user and model messages to conversation history on success
-                addToConversationHistory('user', prompt);
+                addToConversationHistory('user', bodyObj.prompt);
                 addToConversationHistory('assistant', data.response);
                 return;
-
             } catch (error) {
                 lastError = error;
                 console.error(`Attempt ${attempt} failed:`, error);
-                
                 if (attempt < MAX_RETRIES) {
-                    await sleep(RETRY_DELAY * attempt); // Exponential backoff
+                    await sleep(RETRY_DELAY * attempt);
                 }
             }
         }
-
-        // All retries failed
         removeLoadingMessage();
         addMessage('model', `Error after ${MAX_RETRIES} attempts: ${lastError.message}`);
     }
 
-    // --- Handle form submission ---
     chatForm.addEventListener('submit', async (e) => {
-        e.preventDefault(); // Prevent the default form submission (which reloads the page)
-
-        // Prevent multiple concurrent requests
+        e.preventDefault();
         if (isRequestInProgress) {
             console.log('Request already in progress, ignoring submission');
             return;
         }
-
         const prompt = promptInput.value.trim();
-        if (!prompt) return; // Don't send empty messages
+        if (!prompt) return;
 
-        // Set request state and disable form
         isRequestInProgress = true;
         const submitButton = chatForm.querySelector('button[type="submit"]');
         const originalButtonText = submitButton.textContent;
-        
         submitButton.disabled = true;
         submitButton.textContent = '⏳ Sending...';
         promptInput.disabled = true;
         clearHistoryButton.disabled = true;
 
-        const endpoint = `${SERVER_URL}/generate/${selectedModel}`;
-
         try {
-            // 1. Display the user's message immediately
             addMessage('user', prompt);
-
-            // 2. Check if conversation is getting long and might trigger summarization
-            const maxHistoryBeforeSummary = selectedModel === 'medgemma' ? 8 : 16; // 2x the model limits
+            const maxHistoryBeforeSummary = mode === 'agents' ? 8 : (selectedModel === 'medgemma' ? 16 : 16);
             if (conversationHistory.length > maxHistoryBeforeSummary && conversationHistory.length % 10 === 0) {
-                // Show summarization notice every 10 messages after threshold
-                const modelDisplayName = selectedModel === 'medgemma' ? 'MedGemma' : 'Phi-3';
-                const contextType = selectedModel === 'medgemma' ? 'medical context' : 'conversation context';
-                addMessage('system', `📝 Long conversation detected (${conversationHistory.length} messages). Using ${modelDisplayName}-generated summaries to preserve ${contextType} while staying within model limits.`);
+                addMessage('system', `Context management notice: conversation length is ${conversationHistory.length}.`);
             }
-
-            // 3. Clear the input field and show a loading indicator
             promptInput.value = '';
             addMessage('model', 'Thinking...', true);
 
-            // 4. Send the prompt to the backend API with retry logic
-            await sendRequestWithRetry(endpoint, prompt);
+            if (mode === 'agents') {
+                await sendRequestWithRetry(`${SERVER_URL}/chat`, {
+                    prompt: prompt,
+                    conversation_id: conversationId,
+                });
+            } else {
+                const endpoint = `${SERVER_URL}/generate/${selectedModel}`;
+                await sendRequestWithRetry(endpoint, {
+                    prompt: prompt,
+                    system_prompt: getCurrentSystemPrompt(),
+                    conversation_history: conversationHistory,
+                    conversation_id: conversationId,
+                });
+            }
         } finally {
-            // Always re-enable form regardless of success/failure
             isRequestInProgress = false;
             submitButton.disabled = false;
             submitButton.textContent = originalButtonText;
             promptInput.disabled = false;
             clearHistoryButton.disabled = false;
-            promptInput.focus(); // Return focus to input
+            promptInput.focus();
         }
     });
     
-    // --- Helper function to get current system prompt ---
     function getCurrentSystemPrompt() {
-        if (selectedSystemPrompt === 'custom') {
-            return customSystemPrompt;
-        } else {
-            return systemPrompts[selectedSystemPrompt].prompt;
-        }
+        if (selectedSystemPrompt === 'custom') return customSystemPrompt;
+        return systemPrompts[selectedSystemPrompt].prompt;
     }
     
-    // --- Event listener for clear history button ---
     clearHistoryButton.addEventListener('click', () => {
-        // Don't allow clearing history during active request
         if (isRequestInProgress) {
-            addMessage('system', 'Cannot clear history while a request is in progress. Please wait for the current response to complete.');
+            addMessage('system', 'Cannot clear history while a request is in progress.');
             return;
         }
-        
         if (conversationHistory.length === 0) {
             addMessage('system', 'No conversation history to clear.');
             return;
         }
-        
-        if (confirm('Are you sure you want to clear the conversation history? This action cannot be undone.')) {
+        if (confirm('Clear conversation history?')) {
             clearConversationHistory();
         }
     });
 
-    // Initialize the interface and check server health
     populateSystemPrompts();
-    
-    // Check server health on startup
-    checkServerHealth().then(health => {
+    checkServerHealth().then((health) => {
         if (health) {
-            console.log(`Server healthy. Models: General (${health.models.general}), MedGemma (${health.models.medgemma})`);
+            console.log('Server healthy.');
         } else {
             console.warn('Server health check failed - may be starting up');
         }
