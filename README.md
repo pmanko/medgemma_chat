@@ -1,154 +1,119 @@
-# Multi-Model Chat
+# Multi-Model Chat (A2A-enabled)
 
-Fast, lightweight chat application featuring **Gemma 3 1B** (general chat) and **MedGemma 4B** (medical Q&A), optimized for Apple Silicon Macs.
+Fast, lightweight chat application with two modes:
+- Direct per-model chat (general, medical) via external OpenAI-compatible endpoints
+- Agents (A2A) mode that semantically routes to specialist agents and optionally queries FHIR sources
 
-## Quick Start
+References: A2A design and SDK patterns are aligned with the official guides: [Practical Guide to the Official A2A SDK Python](https://a2aprotocol.ai/blog/a2a-sdk-python), [Python A2A: A Comprehensive Guide](https://a2aprotocol.ai/docs/guide/python-a2a.html). For FHIR analytics via Parquet-on-FHIR, see [OHS FHIR Analytics](https://developers.google.com/open-health-stack/fhir-analytics).
 
-**Requirements**: macOS with Apple Silicon (M1/M2/M3), Python 3.12, 16GB+ RAM, 25GB disk space
+## A2A primer (what and why)
 
+Agent2Agent (A2A) is a protocol for interoperable agents. Core ideas:
+- Agents are discoverable via a registry/manifest that lists their skills and input schemas.
+- Agents communicate via a message bus with a standardized envelope (id, sender, receiver, task/skill, payload, status).
+- Orchestrators select a skill and arguments, then invoke the right agent without hard-coding service calls.
+
+This project simulates A2A locally while matching the protocol’s shape (registry + skills + standardized messages) and can run in fully native A2A mode as separate services.
+
+## How we apply A2A here
+
+- Registry and discovery
+  - Each agent registers itself (id, description) and advertises its skills with input schemas.
+  - `GET /manifest` (simulated mode) exposes current agents and skills.
+  - Native mode: each service serves `/.well-known/agent.json`.
+
+- Skills-based orchestration
+  - The router (A2A service in native mode) asks the orchestrator LLM to return `{ "skill": string, "args": object }` and invokes the chosen skill.
+
+- Agents and skills (current)
+  - `medgemma_agent`: `answer_medical_question(query)`
+  - `clinical_research_agent`: `clinical_research(query, scope: facility|hie, facility_id?, org_ids?)`
+
+- Orchestrator options
+  - `ORCHESTRATOR_PROVIDER=gemini` or `openai` (OpenAI-compatible local/cloud), configured in the FastAPI bridge.
+
+## Architecture
+
+- Frontend: `client/index.html`, `client/script.js`
+- FastAPI bridge: `server/main.py`
+  - `/chat` calls router service in native mode or uses in-process simulation when disabled.
+- Native A2A services (optional): `server/a2a_services/*`
+  - Router: `router_service.py`
+  - MedGemma: `medgemma_service.py`
+  - Clinical Research: `clinical_service.py`
+
+## Quick Start (native A2A)
+
+Requirements: Python 3.9–3.12
+
+1) Configure environment
 ```bash
-# Install Python if needed
-brew install python@3.12
-
-# Clone and run
-git clone <your-repo-url>
-cd medgemma_chat
-./start_server.sh
+cp env.example .env
+# Edit .env with:
+# LLM_BASE_URL, LLM_API_KEY, GENERAL_MODEL, MED_MODEL
+# OPENMRS_FHIR_BASE_URL, OPENMRS_USERNAME, OPENMRS_PASSWORD
+# SPARK_THRIFT_HOST, SPARK_THRIFT_PORT, SPARK_THRIFT_DATABASE, SPARK_THRIFT_USER, SPARK_THRIFT_PASSWORD
+# A2A_MEDGEMMA_URL=http://localhost:9101
+# A2A_CLINICAL_URL=http://localhost:9102
+# A2A_ROUTER_URL=http://localhost:9100
+# ENABLE_A2A_NATIVE=true
 ```
 
-The script handles everything automatically: Poetry installation, dependencies, model downloads (~25GB), and server startup.
-
-### First Run
-1. **Hugging Face Login**: You'll be prompted to authenticate (required for MedGemma)
-   - Visit [MedGemma page](https://huggingface.co/google/medgemma-4b-it) and accept terms
-   - Get token from [settings](https://huggingface.co/settings/tokens)
-   - Paste when prompted
-2. **Model Download**: ~25GB total (one-time, cached locally)
-3. **Server Starts**: http://127.0.0.1:3000
-
-## Usage
-
-1. Open `client/index.html` in your browser
-2. Select a model:
-   - **📱 Gemma 3 1B**: Ultra-fast general chat (1-3s responses, English-only)
-   - **🏥 MedGemma**: Medical Q&A with disclaimers (3-8s responses)
-3. Choose a system prompt preset or write your own
-4. Start chatting!
-
-### Example Prompts
-- General: "Explain quantum computing in simple terms"
-- Medical: "What are the symptoms of dehydration?"
-- Custom: "Act as a Python tutor and explain list comprehensions"
-
-## Performance
-
-Optimized for Apple Silicon with:
-- Metal Performance Shaders (MPS) acceleration
-- bfloat16 precision for speed and stability
-- Smart memory management
-- Context-aware token limits
-
-**Expected response times** (M2/M3 MacBook):
-- Gemma 3 1B: 1-3 seconds
-- MedGemma: 3-8 seconds
-
-## Configuration
-
-### Switch Models
-
-Edit `MODEL_CONFIG` in `server/main.py`:
-
-```python
-"general": {
-    "model_id": "google/gemma-2-2b-it",  # Change to any model
-    "display_name": "Gemma 2 2B",
-    # ...
-}
-```
-
-**Popular alternatives**:
-- `google/gemma-2-2b-it` - Better performance, 2B params
-- `microsoft/Phi-3-mini-4k-instruct` - Microsoft's 3.8B model
-- `mistralai/Mistral-7B-Instruct-v0.2` - Powerful 7B model
-
-### Add New Models
-
-```python
-"coding": {
-    "enabled": True,
-    "model_id": "google/codegemma-2b",
-    "display_name": "CodeGemma",
-    "icon": "💻",
-    # ...
-}
-```
-
-## Memory Management
-
-Models use ~20GB RAM when loaded. Memory is managed automatically by PyTorch/Python for optimal performance. 
-
-If you experience memory issues:
-
-```bash
-# Check memory usage
-curl http://127.0.0.1:3000/health | jq .memory
-
-# Manual cleanup (only when needed)
-curl -X POST http://127.0.0.1:3000/memory/cleanup
-
-# Or just restart the server
-```
-
-**Note**: Automatic cleanup was removed in v1.1 as it was causing 30-60 second delays.
-
-## Troubleshooting
-
-### Setup Issues
-
-**Python not found**:
-```bash
-brew install python@3.12
-python3.12 --version
-```
-
-**Poetry issues**:
-```bash
-# Manual install
-curl -sSL https://install.python-poetry.org | python3.12 -
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### Performance Issues
-
-- **Slow responses**: Check Activity Monitor for memory pressure
-- **Very slow (>60s)**: Fixed in v1.1 - was caused by aggressive memory cleanup
-- **First response slow**: Normal - models warming up
-- **Gemma 3 1B**: Optimized for 1-3 second responses with greedy decoding
-
-### Common Errors
-
-- **Connection refused**: Server not running, check terminal
-- **Out of memory**: Close other apps, need 16GB+ free
-- **Authentication failed**: Accept MedGemma license on Hugging Face
-
-## Advanced
-
-### Manual Setup
+2) Install and run
 ```bash
 poetry install
-poetry run python server/main.py
+# Start MedGemma agent
+poetry run uvicorn server.a2a_services.medgemma_service:app --host 0.0.0.0 --port 9101
+# Start Clinical agent (separate terminal)
+poetry run uvicorn server.a2a_services.clinical_service:app --host 0.0.0.0 --port 9102
+# Start Router agent (separate terminal)
+poetry run uvicorn server.a2a_services.router_service:app --host 0.0.0.0 --port 9100
+# Start FastAPI bridge (separate terminal)
+poetry run uvicorn server.main:app --host 0.0.0.0 --port 3000
 ```
 
-### Performance Packages
+3) Open the UI
+- Open `client/index.html` in your browser
+- Select Agents (A2A) mode; messages go to `/chat`, which forwards to the router agent
+
+## Quick Start (simulated A2A)
+
 ```bash
-poetry install --extras performance
+poetry install
+poetry run uvicorn server.main:app --host 0.0.0.0 --port 3000
+# ENABLE_A2A=true, ENABLE_A2A_NATIVE=false (default) in .env
 ```
 
-### System Prompts
-The app uses a 4-layer prompt system:
-1. Model defaults (built-in)
-2. User selection (presets/custom)
-3. Response optimization (automatic)
-4. Smart token management
+## Environment Configuration
 
-See [prompt optimization research](https://medium.com/data-science-in-your-pocket/claudes-system-prompt-explained-d9b7989c38a3) for details.
+Core LLMs:
+- `LLM_BASE_URL` (no `/v1`), `LLM_API_KEY`
+- `GENERAL_MODEL`, `MED_MODEL`, `LLM_TEMPERATURE`
+
+Orchestrator (FastAPI bridge):
+- `ORCHESTRATOR_PROVIDER` = `gemini` or `openai`
+- `ORCHESTRATOR_MODEL`, `GEMINI_API_KEY` (if provider is `gemini`)
+
+A2A mode:
+- `ENABLE_A2A=true` enables A2A
+- `ENABLE_A2A_NATIVE=true` uses native services; set service URLs:
+  - `A2A_ROUTER_URL`, `A2A_MEDGEMMA_URL`, `A2A_CLINICAL_URL`
+
+FHIR + SQL-on-FHIR:
+- `OPENMRS_FHIR_BASE_URL`, `OPENMRS_USERNAME`, `OPENMRS_PASSWORD`
+- `SPARK_THRIFT_HOST`, `SPARK_THRIFT_PORT`, `SPARK_THRIFT_DATABASE`, `SPARK_THRIFT_USER`, `SPARK_THRIFT_PASSWORD`
+
+## API
+
+- Native manifests: `GET /.well-known/agent.json` (per service)
+- Discovery (simulated): `GET /manifest`
+- Orchestrated chat: `POST /chat` (FastAPI bridge)
+- Direct chat (back-compat): `POST /generate/general`, `POST /generate/medgemma`
+
+## Roadmap
+
+- Phase 2: add a hybrid RAG path with biomedical text embeddings for semantic retrieval over text-heavy FHIR fields; retain MedGemma for clinical synthesis.
+
+## License
+
+MIT
