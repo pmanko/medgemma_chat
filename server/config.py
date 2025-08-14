@@ -60,10 +60,39 @@ class LocalDatastoreConfig:
     parquet_dir: Optional[str] = os.getenv("FHIR_PARQUET_DIR")
 
 
+@dataclass
+class MySQLConfig:
+    """Configuration for OpenMRS MySQL database connection"""
+    host: str = os.getenv("MYSQL_HOST", "localhost")
+    port: int = int(os.getenv("MYSQL_PORT", "3306"))
+    database: str = os.getenv("MYSQL_DATABASE", "openmrs")
+    username: str = os.getenv("MYSQL_USER", "openmrs")
+    password: str = os.getenv("MYSQL_PASSWORD", "openmrs")
+
+
+@dataclass
+class VectorDBConfig:
+    """Configuration for vector database (ChromaDB)"""
+    provider: str = os.getenv("VECTOR_DB_PROVIDER", "chromadb")
+    persist_directory: str = os.getenv("VECTOR_DB_DIR", "./data/vector_db")
+    collection_name: str = os.getenv("VECTOR_COLLECTION", "openmrs_concepts")
+
+
+@dataclass 
+class EmbeddingConfig:
+    """Configuration for embedding model and generation"""
+    model_name: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+    dimension: int = int(os.getenv("EMBEDDING_DIM", "384"))
+    batch_size: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
+
+
 llm_config = LLMConfig()
 orchestrator_config = OrchestratorConfig()
 agent_config = AgentConfig()
 a2a_endpoints = A2AEndpoints()
 openmrs_config = OpenMRSConfig()
 spark_config = SparkConfig()
-local_config = LocalDatastoreConfig() 
+local_config = LocalDatastoreConfig()
+mysql_config = MySQLConfig()
+vector_db_config = VectorDBConfig()
+embedding_config = EmbeddingConfig() 
