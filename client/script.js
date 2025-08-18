@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedModel = 'general';
     let selectedSystemPrompt = 'default';
     let customSystemPrompt = '';
-    let mode = 'direct'; // 'direct' | 'agents'
+    let mode = 'agents'; // default to Agents (A2A)
     
     // Conversation history management
     let conversationHistory = [];
@@ -341,6 +341,10 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
     });
 
     populateSystemPrompts();
+    // Default UI to Agents (A2A)
+    tabModeSpan.textContent = '🕸️ Agents (A2A)';
+    directControls.style.display = 'none';
+    promptControls.style.display = 'none';
     checkServerHealth().then((health) => {
         if (health) {
             console.log('Server healthy.');

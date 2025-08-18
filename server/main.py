@@ -124,8 +124,12 @@ def generate_general(request: PromptRequest):
         )
         return {"response": text}
     except Exception as e:
-        logger.error(f"General generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"General generation unavailable: {e}")
+        fallback = (
+            "The general LLM backend is currently unavailable. "
+            "Please try again shortly or use Agents (A2A) mode if configured."
+        )
+        return {"response": fallback}
 
 
 @app.post("/generate/medgemma", response_model=PromptResponse)
@@ -148,8 +152,12 @@ def generate_medgemma(request: PromptRequest):
         )
         return {"response": text}
     except Exception as e:
-        logger.error(f"Medical generation error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.warning(f"Medical LLM unavailable: {e}")
+        fallback = (
+            "The medical LLM backend is currently unavailable. "
+            "Please try again or use Agents (A2A) mode if configured."
+        )
+        return {"response": fallback}
 
 
 @app.post("/chat", response_model=ChatResponse)

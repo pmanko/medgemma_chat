@@ -120,19 +120,28 @@ body {
     margin: 0;
     display: flex;
     align-items: stretch;
+    border: none;
 }
 
 /* Vertical layout for input and buttons */
 .chat-form fieldset[role="group"] {
     display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    flex-direction: row; /* place buttons to the right */
+    gap: 0.5rem;
+}
+
+.chat-form fieldset[role="group"]:focus-within {
+    outline: none;
+    box-shadow: none;
+    border: none;
 }
 
 .chat-form fieldset[role="group"] input {
     width: 100%;
     margin: 0;
     border-radius: var(--pico-border-radius);
+    flex: 1 1 auto; /* take remaining space */
+    padding: 0.5rem 0.75rem; /* thinner */
 }
 
 /* Disabled input styling */
@@ -145,6 +154,7 @@ body {
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
+    align-items: center;
 }
 
 .chat-form fieldset[role="group"] button {
@@ -200,6 +210,11 @@ nav h1 {
     font-size: 0.75rem;
     opacity: 0.8;
     z-index: 999; /* Below input form */
+}
+
+/* Ensure chat messages aren't obscured by the fixed form */
+.chat-window {
+    padding-bottom: 200px; /* extra space for input form */
 }
 
 /* Responsive design for smaller screens */
