@@ -33,8 +33,8 @@ ENV PATH="${PATH}:${POETRY_VENV}/bin"
 # Copy dependency files
 COPY pyproject.toml poetry.lock ./
 
-# Export requirements from Poetry
-RUN poetry export -f requirements.txt --output requirements.txt --without-hashes
+# Export requirements from Poetry, including optional extras needed in runtime
+RUN poetry export -f requirements.txt --output requirements.txt --without-hashes --extras spark --extras duckdb
 
 # Install dependencies to builder stage for wheel building
 RUN pip install --user --no-cache-dir -r requirements.txt
@@ -58,14 +58,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /root/.local /root/.local
+# Copy Python packages from builder into system site-packages and bin
+# This avoids permission issues when running as non-root user
+COPY --from=builder /root/.local /usr/local
 
 # Copy requirements for reference
 COPY --from=builder /app/requirements.txt .
 
-# Make sure scripts in .local are executable
-ENV PATH=/root/.local/bin:$PATH
+# Ensure system-local bin is prioritized (uvicorn, etc.)
+ENV PATH=/usr/local/bin:$PATH
 
 # Copy application code
 COPY server/ ./server/
@@ -74,9 +75,8 @@ COPY server/ ./server/
 RUN mkdir -p logs data && \
     chown -R appuser:appuser /app
 
-# Set Python path
-ENV PYTHONPATH=/app:$PYTHONPATH \
-    PYTHONUNBUFFERED=1
+# Set Python options
+ENV PYTHONUNBUFFERED=1
 
 # Default environment variables (can be overridden)
 ENV LLM_BASE_URL=http://localhost:1234 \
