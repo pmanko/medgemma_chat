@@ -3,7 +3,6 @@ import json
 from typing import Optional
 
 import requests
-from pyhive import hive
 
 from ..a2a_layer import registry, bus, new_message
 from ..config import llm_config, openmrs_config, spark_config
@@ -45,11 +44,16 @@ def run_clinical_research_agent() -> threading.Thread:
             raise RuntimeError("SPARK_THRIFT_HOST is not configured")
         try:
             if spark_conn["conn"] is None:
+                # Import PyHive lazily so the agent can run without Spark deps in dev
+                try:
+                    from pyhive import hive as hive_mod
+                except ImportError as ie:
+                    raise RuntimeError("PyHive is not installed; install extras 'spark' or set SPARK_THRIFT_HOST empty to disable SQL-on-FHIR") from ie
                 auth = "NONE"
                 kwargs = {"host": spark_config.host, "port": spark_config.port, "database": spark_config.database or "default", "auth": auth}
                 if spark_config.username and spark_config.password:
                     kwargs.update({"username": spark_config.username, "password": spark_config.password, "auth": "LDAP"})
-                spark_conn["conn"] = hive.Connection(**kwargs)
+                spark_conn["conn"] = hive_mod.Connection(**kwargs)
             return spark_conn["conn"]
         except Exception:
             spark_conn["conn"] = None

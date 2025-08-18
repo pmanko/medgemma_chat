@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Configuration - can be easily modified for different environments
-    const SERVER_URL = 'http://127.0.0.1:3000';
+    // Use relative URLs so nginx can proxy properly
+    const SERVER_URL = '';  // Empty string means use same origin (nginx will proxy)
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000; // milliseconds
     const REQUEST_TIMEOUT = 120000; // 2 minutes timeout for model generation
