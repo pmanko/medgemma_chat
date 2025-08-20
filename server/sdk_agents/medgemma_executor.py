@@ -25,7 +25,7 @@ class MedGemmaExecutor(AgentExecutor):
         self.llm_api_key = os.getenv("LLM_API_KEY", "")
         self.med_model = os.getenv("MED_MODEL", "medgemma-2")
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
-        self.http_client = httpx.AsyncClient(timeout=90.0)
+        self.http_client = httpx.AsyncClient(timeout=180.0)
         logger.info(f"MedGemma executor initialized with model: {self.med_model}")
     
     async def execute(

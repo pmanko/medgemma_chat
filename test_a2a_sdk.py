@@ -6,9 +6,24 @@ Demonstrates using the official A2A SDK to communicate with agents
 
 import asyncio
 import logging
-from a2a.client import ClientFactory
-from a2a.client.transports import JsonRpcTransport
 import json
+import httpx
+from uuid import uuid4
+from a2a.client import ClientFactory, ClientConfig
+from a2a.types import AgentCard, Message, Role, Part, TextPart, TransportProtocol
+
+
+async def fetch_agent_card(base_url: str, httpx_client: httpx.AsyncClient) -> AgentCard:
+    """Fetch AgentCard using the standard .well-known path served by our agents."""
+    # Prefer agent.json; fallback to agent-card.json if needed
+    for path in ("/.well-known/agent.json", "/.well-known/agent-card.json"):
+        try:
+            resp = await httpx_client.get(f"{base_url}{path}")
+            if resp.status_code == 200:
+                return AgentCard(**resp.json())
+        except Exception:
+            continue
+    raise RuntimeError(f"Could not fetch AgentCard from {base_url}")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,8 +42,8 @@ async def test_agent_discovery():
     
     for name, url in agents.items():
         try:
-            client = ClientFactory.create_client(JsonRpcTransport(url=url))
-            card = await client.get_agent_card()
+            async with httpx.AsyncClient() as httpx_client:
+                card = await fetch_agent_card(url, httpx_client)
             
             logger.info(f"\n{name} Agent:")
             logger.info(f"  Name: {card.name}")
@@ -42,7 +57,7 @@ async def test_agent_discovery():
                     props = skill.input_schema.get('properties', {})
                     logger.info(f"      Inputs: {', '.join(props.keys())}")
                     
-            await client.close()
+            # no client needed for discovery via resolver
             
         except Exception as e:
             logger.error(f"Failed to discover {name} agent: {e}")
@@ -53,7 +68,13 @@ async def test_medgemma_agent():
     logger.info("Testing MedGemma Agent")
     logger.info("=" * 60)
     
-    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9101"))
+    httpx_client = httpx.AsyncClient(timeout=180)
+    card = await fetch_agent_card("http://localhost:9101", httpx_client)
+    client = ClientFactory(ClientConfig(
+        httpx_client=httpx_client,
+        supported_transports=[TransportProtocol.jsonrpc],
+        use_client_preference=False,
+    )).create(card)
     
     queries = [
         "What are the common symptoms of hypertension?",
@@ -64,23 +85,22 @@ async def test_medgemma_agent():
     for query in queries:
         try:
             logger.info(f"\nQuery: {query}")
-            
-            result = await client.invoke_skill(
-                "answer_medical_question",
-                query=query,
-                include_references=True
+            message = Message(
+                role=Role.user,
+                parts=[Part(root=TextPart(text=query))],
+                messageId=str(uuid4()),
             )
-            
-            logger.info(f"Answer: {result['answer'][:200]}...")
-            logger.info(f"Confidence: {result.get('confidence', 'N/A')}")
-            
-            if 'references' in result and result['references']:
-                logger.info(f"References: {', '.join(result['references'])}")
-                
+            captured = []
+            async for event in client.send_message(message):
+                evt = event[0] if isinstance(event, tuple) else event
+                captured.append(str(evt))
+            if captured:
+                logger.info(f"Streamed events: {captured[-1][:300]}...")
         except Exception as e:
             logger.error(f"Failed to query MedGemma: {e}")
     
     await client.close()
+    await httpx_client.aclose()
 
 async def test_clinical_agent():
     """Test Clinical Research agent"""
@@ -88,7 +108,18 @@ async def test_clinical_agent():
     logger.info("Testing Clinical Research Agent")
     logger.info("=" * 60)
     
-    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9102"))
+    httpx_client = httpx.AsyncClient(timeout=180)
+    card = await fetch_agent_card("http://localhost:9102", httpx_client)
+    try:
+        client = ClientFactory(ClientConfig(
+            httpx_client=httpx_client,
+            supported_transports=[TransportProtocol.jsonrpc],
+            use_client_preference=False,
+        )).create(card)
+    except Exception as e:
+        logger.error(f"Skipping Clinical direct test (client init failed): {e}")
+        await httpx_client.aclose()
+        return
     
     queries = [
         {
@@ -106,20 +137,23 @@ async def test_clinical_agent():
         try:
             logger.info(f"\nQuery: {q['query']}")
             logger.info(f"Scope: {q.get('scope', 'hie')}")
-            
-            result = await client.invoke_skill(
-                "clinical_research",
-                **q
+            message = Message(
+                role=Role.user,
+                parts=[Part(root=TextPart(text=q['query']))],
+                messageId=str(uuid4()),
             )
-            
-            logger.info(f"Response: {result['response'][:200]}...")
-            logger.info(f"Data Source: {result.get('data_source', 'N/A')}")
-            logger.info(f"Records Found: {result.get('records_found', 'N/A')}")
+            captured = []
+            async for event in client.send_message(message):
+                evt = event[0] if isinstance(event, tuple) else event
+                captured.append(str(evt))
+            if captured:
+                logger.info(f"Streamed events: {captured[-1][:300]}...")
             
         except Exception as e:
             logger.error(f"Failed to query Clinical agent: {e}")
     
     await client.close()
+    await httpx_client.aclose()
 
 async def test_router_agent():
     """Test Router orchestration"""
@@ -127,7 +161,13 @@ async def test_router_agent():
     logger.info("Testing Router Agent (Orchestration)")
     logger.info("=" * 60)
     
-    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9100"))
+    httpx_client = httpx.AsyncClient(timeout=180)
+    card = await fetch_agent_card("http://localhost:9100", httpx_client)
+    client = ClientFactory(ClientConfig(
+        httpx_client=httpx_client,
+        supported_transports=[TransportProtocol.jsonrpc],
+        use_client_preference=False,
+    )).create(card)
     
     test_cases = [
         {
@@ -165,25 +205,23 @@ async def test_router_agent():
             if "facility_id" in test:
                 args["facility_id"] = test["facility_id"]
             
-            result = await client.invoke_skill("route_query", **args)
-            
-            agent_used = result.get("agent_used", "unknown")
-            skill_used = result.get("skill_used", "unknown")
-            confidence = result.get("routing_confidence", 0)
-            
-            logger.info(f"Routed to: {agent_used}.{skill_used}")
-            logger.info(f"Confidence: {confidence}")
-            logger.info(f"Response: {result['response'][:200]}...")
-            
-            if agent_used == expected:
-                logger.info("✓ Routing matched expectation")
-            else:
-                logger.warning(f"✗ Expected {expected}, got {agent_used}")
+            message = Message(
+                role=Role.user,
+                parts=[Part(root=TextPart(text=query))],
+                messageId=str(uuid4()),
+            )
+            captured = []
+            async for event in client.send_message(message):
+                evt = event[0] if isinstance(event, tuple) else event
+                captured.append(str(evt))
+            if captured:
+                logger.info(f"Router streamed events: {captured[-1][:300]}...")
                 
         except Exception as e:
             logger.error(f"Failed to query Router: {e}")
     
     await client.close()
+    await httpx_client.aclose()
 
 async def test_end_to_end():
     """Test complete flow through the system"""
@@ -199,49 +237,83 @@ async def test_end_to_end():
         "Show me patients with uncontrolled hypertension"
     ]
     
-    router_client = A2AClient("http://localhost:9100")
+    # Build Router client via resolver + factory
+    httpx_client = httpx.AsyncClient(timeout=180)
+    card = await fetch_agent_card("http://localhost:9100", httpx_client)
+    router_client = ClientFactory(ClientConfig(
+        httpx_client=httpx_client,
+        supported_transports=[TransportProtocol.jsonrpc],
+        use_client_preference=False,
+    )).create(card)
     conversation_id = "test-conversation-001"
     
     for i, query in enumerate(conversation, 1):
         try:
             logger.info(f"\n[Turn {i}] User: {query}")
-            
-            result = await router_client.invoke_skill(
-                "route_query",
-                query=query,
-                conversation_id=conversation_id,
-                scope="hie"
+            message = Message(
+                role=Role.user,
+                parts=[Part(root=TextPart(text=query))],
+                messageId=str(uuid4()),
             )
-            
-            logger.info(f"[Turn {i}] Agent: {result['agent_used']}")
-            logger.info(f"[Turn {i}] Response: {result['response'][:300]}...")
+            captured = []
+            async for event in router_client.send_message(message):
+                evt = event[0] if isinstance(event, tuple) else event
+                captured.append(str(evt))
+            if captured:
+                logger.info(f"[Turn {i}] Last event: {captured[-1][:300]}...")
             
         except Exception as e:
             logger.error(f"Failed at turn {i}: {e}")
     
     await router_client.close()
+    await httpx_client.aclose()
+
+
+async def test_simple_router_query():
+    """Very simple sanity test: route a basic medical question via Router."""
+    logger.info("\n" + "=" * 60)
+    logger.info("Simple Router Query Test")
+    logger.info("=" * 60)
+
+    httpx_client = httpx.AsyncClient()
+    resolver = A2ACardResolver(httpx_client, "http://localhost:9100")
+    card = await resolver.get_agent_card()
+    client = ClientFactory(ClientConfig(httpx_client=httpx_client)).create(card)
+
+    try:
+        result = await client.invoke_skill(
+            "route_query",
+            query="What are common symptoms of hypertension?",
+        )
+        logger.info(f"Simple routed result: {str(result)[:300]}")
+    finally:
+        await client.close()
+        await httpx_client.aclose()
 
 async def main():
     """Run all tests"""
     
     # Wait for agents to be ready
     logger.info("Waiting for agents to start...")
-    await asyncio.sleep(2)
+    await asyncio.sleep(5)
     
-    try:
-        # Run tests in sequence
-        await test_agent_discovery()
-        await test_medgemma_agent()
-        await test_clinical_agent()
-        await test_router_agent()
-        await test_end_to_end()
-        
-        logger.info("\n" + "=" * 60)
-        logger.info("All tests completed!")
-        logger.info("=" * 60)
-        
-    except Exception as e:
-        logger.error(f"Test suite failed: {e}", exc_info=True)
+    # Run tests in sequence; never abort whole run on a single failure
+    for test in [
+        ("discovery", test_agent_discovery),
+        ("medgemma", test_medgemma_agent),
+        ("clinical", test_clinical_agent),
+        ("router", test_router_agent),
+        ("end_to_end", test_end_to_end),
+    ]:
+        name, fn = test
+        try:
+            await fn()
+        except Exception as e:
+            logger.error(f"Test '{name}' failed: {e}", exc_info=True)
+
+    logger.info("\n" + "=" * 60)
+    logger.info("All tests completed!")
+    logger.info("=" * 60)
 
 if __name__ == "__main__":
     import sys

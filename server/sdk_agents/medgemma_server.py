@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-from a2a.server.apps import A2ARESTFastAPIApplication
+from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCard
@@ -50,8 +50,8 @@ def main(host: str, port: int):
         task_store=InMemoryTaskStore()
     )
     
-    # Create and run server (REST FastAPI application)
-    server = A2ARESTFastAPIApplication(
+    # Create and run server (Starlette application exposes .well-known)
+    server = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler
     )

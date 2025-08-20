@@ -3,6 +3,7 @@
   "description": "Provides clinical research analysis and general clinical answers",
   "url": "http://localhost:9102/",
   "version": "1.0.0",
+  "preferredTransport": "jsonrpc",
   "capabilities": {
     "streaming": false,
     "pushNotifications": false,

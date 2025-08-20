@@ -7,7 +7,7 @@ import uvicorn
 import logging
 import json
 from pathlib import Path
-from a2a.server.apps import A2ARESTFastAPIApplication
+from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, TransportProtocol, AgentCard
@@ -36,8 +36,8 @@ def create_router_server():
     agent_card.preferred_transport = TransportProtocol.http_json
     agent_card.capabilities = AgentCapabilities(streaming=True)
     
-    # Create the server application
-    server_app = A2ARESTFastAPIApplication(
+    # Create the server application (Starlette to expose .well-known)
+    server_app = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler
     )

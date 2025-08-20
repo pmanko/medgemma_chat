@@ -3,6 +3,7 @@
   "description": "Provides evidence-based medical information and answers to general medical questions",
   "url": "http://localhost:9101/",
   "version": "1.0.0",
+  "preferredTransport": "jsonrpc",
   "capabilities": {
     "streaming": false,
     "pushNotifications": false,

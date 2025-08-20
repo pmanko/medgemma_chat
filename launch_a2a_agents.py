@@ -8,6 +8,7 @@ import asyncio
 import sys
 import os
 import subprocess
+from pathlib import Path
 import signal
 import logging
 from typing import List
@@ -47,10 +48,16 @@ def start_agent(name: str, module: str, port: int) -> subprocess.Popen:
         "--port", str(port)
     ]
     
+    # Ensure logs directory exists and stream output to files to avoid PIPE deadlocks
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    log_path = logs_dir / f"{name.lower()}.log"
+    log_file = open(log_path, "a", encoding="utf-8")
+
     proc = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stdout=log_file,
+        stderr=log_file,
         text=True
     )
     

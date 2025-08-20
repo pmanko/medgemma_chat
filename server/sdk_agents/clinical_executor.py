@@ -34,7 +34,7 @@ class ClinicalExecutor(AgentExecutor):
         self.llm_api_key = os.getenv("LLM_API_KEY", "")
         self.general_model = os.getenv("GENERAL_MODEL", "gemma-3-12b-it")
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
-        self.http_client = httpx.AsyncClient(timeout=90.0)
+        self.http_client = httpx.AsyncClient(timeout=180.0)
         
         # Clinical data sources (optional)
         self.fhir_base_url = os.getenv("OPENMRS_FHIR_BASE_URL")

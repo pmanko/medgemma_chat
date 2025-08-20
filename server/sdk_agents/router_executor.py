@@ -37,7 +37,7 @@ class RouterAgentExecutor(AgentExecutor):
         self.llm_api_key = os.getenv("LLM_API_KEY", "")
         self.orchestrator_model = os.getenv("ORCHESTRATOR_MODEL", "llama-3-8b-instruct")
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
-        self.http_client = httpx.AsyncClient(timeout=90.0)
+        self.http_client = httpx.AsyncClient(timeout=180.0)
         
         # Agent registry - in production this would be dynamic
         self.agents = {
