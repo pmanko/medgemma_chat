@@ -1,10 +1,14 @@
 """
-MedGemma Medical Agent using A2A SDK
-Provides medical Q&A capabilities using the MedGemma model
+MedGemma Agent Executor using A2A SDK
+Handles medical Q&A requests using the MedGemma model
 """
 
-from .base_agent import BaseA2AAgent
-from a2a.types import AgentCard, AgentSkill
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types import Part, TextPart, Task, TaskState, UnsupportedOperationError
+from a2a.utils import new_agent_text_message, new_task
+from a2a.utils.errors import ServerError
 import httpx
 import logging
 import os
@@ -12,53 +16,41 @@ import json
 
 logger = logging.getLogger(__name__)
 
-class MedGemmaAgent(BaseA2AAgent):
-    """Medical Q&A agent using MedGemma model with A2A SDK"""
+
+class MedGemmaExecutor(AgentExecutor):
+    """Medical Q&A agent executor using MedGemma model"""
     
     def __init__(self):
-        super().__init__(
-            name="MedGemma Medical Assistant",
-            description="Provides evidence-based medical information and answers to general medical questions",
-            version="1.0.0"
-        )
         self.llm_base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234")
         self.llm_api_key = os.getenv("LLM_API_KEY", "")
         self.med_model = os.getenv("MED_MODEL", "medgemma-2")
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
         self.http_client = httpx.AsyncClient(timeout=90.0)
-        logger.info(f"MedGemma agent initialized with model: {self.med_model}")
+        logger.info(f"MedGemma executor initialized with model: {self.med_model}")
     
-    async def get_agent_card(self) -> AgentCard:
-        """Return agent capabilities following A2A protocol"""
-        return AgentCard(
-            name=self.name,
-            description=self.description,
-            version=self.version,
-            skills=[
-                AgentSkill(
-                    name="answer_medical_question",
-                    description="Answer general medical questions with clinical accuracy and appropriate disclaimers"
-                ),
-                AgentSkill(
-                    name="explain_medical_concept",
-                    description="Explain medical concepts, conditions, or procedures in patient-friendly language"
-                )
-            ]
-        )
-    
-    async def process_message(self, query: str) -> str:
-        """
-        Process medical question using MedGemma model
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        """Execute medical Q&A request"""
+        query = context.get_user_input()
+        task = context.current_task
         
-        Args:
-            query: Medical question to answer
-            
-        Returns:
-            Medical answer with appropriate disclaimers
-        """
-        logger.info(f"Processing medical query: {query[:100]}...")
+        # Create a new task if none exists
+        if not task:
+            task = new_task(context.message)
+            await event_queue.enqueue_event(task)
+        
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
         
         try:
+            # Update status to working
+            await updater.update_status(
+                TaskState.working,
+                new_agent_text_message("Processing your medical question...", task.context_id, task.id)
+            )
+            
             # Prepare system prompt
             system_prompt = """You are MedGemma, a medical AI assistant trained on clinical literature. 
             Provide accurate, evidence-based medical information. 
@@ -72,9 +64,7 @@ class MedGemmaAgent(BaseA2AAgent):
             5. Recommend professional consultation when appropriate"""
             
             # Call LLM
-            headers = {
-                "Content-Type": "application/json"
-            }
+            headers = {"Content-Type": "application/json"}
             if self.llm_api_key:
                 headers["Authorization"] = f"Bearer {self.llm_api_key}"
             
@@ -105,16 +95,41 @@ class MedGemmaAgent(BaseA2AAgent):
             if "consult" not in answer.lower() and "professional" not in answer.lower():
                 answer += "\n\n**Disclaimer:** This information is for educational purposes only and should not replace professional medical advice. Always consult with a qualified healthcare provider for medical concerns."
             
-            return answer
+            # Add the response as an artifact
+            await updater.add_artifact(
+                [Part(root=TextPart(text=answer))],
+                name='medical_response',
+                description='Medical Q&A response'
+            )
+            
+            # Complete the task
+            await updater.complete()
             
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error calling LLM: {e}")
-            return f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
+            error_msg = f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
+            await updater.update_status(
+                TaskState.failed,
+                new_agent_text_message(error_msg, task.context_id, task.id)
+            )
+            
         except Exception as e:
             logger.error(f"Error processing medical query: {e}", exc_info=True)
-            return f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
+            error_msg = f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
+            await updater.update_status(
+                TaskState.failed,
+                new_agent_text_message(error_msg, task.context_id, task.id)
+            )
+    
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> Task | None:
+        """Cancel is not supported for this agent"""
+        raise ServerError(error=UnsupportedOperationError(
+            message="Cancel operation is not supported for MedGemma agent"
+        ))
     
     async def cleanup(self):
         """Clean up resources"""
         await self.http_client.aclose()
-        logger.info("MedGemma agent cleanup completed")
+        logger.info("MedGemma executor cleanup completed")

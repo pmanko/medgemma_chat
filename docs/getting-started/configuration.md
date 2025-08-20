@@ -4,9 +4,9 @@ Simple configuration for the Medical Multi-Agent Chat System. Most users only ne
 
 ## Quick Start
 
-1. **Copy the example file**:
+1. **Copy the recommended config**:
 ```bash
-cp env.example .env
+cp env.recommended .env
 ```
 
 2. **Edit `.env`** with your LM Studio URL:
@@ -20,15 +20,16 @@ LLM_BASE_URL=http://localhost:1234
 
 ### Required Settings
 
-Only these settings are required:
+Only these settings are required (values shown are the project's recommended defaults):
 
 ```env
 # Your LM Studio endpoint (without /v1)
 LLM_BASE_URL=http://localhost:1234
 
-# Models available in your LM Studio
-GENERAL_MODEL=llama-3-8b-instruct
-MED_MODEL=medgemma-2  # Can be same as GENERAL_MODEL
+# Router / Clinical / Med models
+ORCHESTRATOR_MODEL=meta-llama-3.1-8b-instruct
+GENERAL_MODEL=gemma-3-12b-it
+MED_MODEL=medgemma-4b-it-mlx
 ```
 
 ### Optional: Use Google Gemini for Orchestration
@@ -94,16 +95,18 @@ The system automatically configures these settings (no need to set them):
 
 ### Minimal Setup (Most Users)
 ```env
-# Just these two lines!
+# LM Studio endpoint plus recommended models
 LLM_BASE_URL=http://localhost:1234
-GENERAL_MODEL=llama-3-8b-instruct
+ORCHESTRATOR_MODEL=meta-llama-3.1-8b-instruct
+GENERAL_MODEL=gemma-3-12b-it
+MED_MODEL=medgemma-4b-it-mlx
 ```
 
 ### With Gemini Orchestration
 ```env
 LLM_BASE_URL=http://localhost:1234
-GENERAL_MODEL=llama-3-8b-instruct
-MED_MODEL=medgemma-2
+GENERAL_MODEL=gemma-3-12b-it
+MED_MODEL=medgemma-4b-it-mlx
 
 # Use Gemini for smarter routing
 ORCHESTRATOR_PROVIDER=gemini
@@ -114,7 +117,7 @@ ORCHESTRATOR_MODEL=gemini-1.5-flash
 ### With Clinical Data
 ```env
 LLM_BASE_URL=http://localhost:1234
-GENERAL_MODEL=llama-3-8b-instruct
+GENERAL_MODEL=gemma-3-12b-it
 
 # Connect to FHIR server
 OPENMRS_FHIR_BASE_URL=http://localhost:8080/openmrs/ws/fhir2/R4/
@@ -165,7 +168,10 @@ All commands should be run with Poetry:
 poetry run python launch_a2a_agents.py
 
 # Test configuration
-poetry run python test_config.py
+poetry run python test_config.py                      # Test current .env
+poetry run python test_config.py --env-file <path>    # Test custom .env file
+poetry run python test_config.py minimal              # Test minimal config
+poetry run python test_config.py gemini               # Test Gemini orchestration
 
 # Run tests
 poetry run python test_a2a_sdk.py

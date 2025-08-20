@@ -6,7 +6,8 @@ Demonstrates using the official A2A SDK to communicate with agents
 
 import asyncio
 import logging
-from a2a.client import AgentClient
+from a2a.client import ClientFactory
+from a2a.client.transports import JsonRpcTransport
 import json
 
 logging.basicConfig(level=logging.INFO)
@@ -26,7 +27,7 @@ async def test_agent_discovery():
     
     for name, url in agents.items():
         try:
-            client = AgentClient(url)
+            client = ClientFactory.create_client(JsonRpcTransport(url=url))
             card = await client.get_agent_card()
             
             logger.info(f"\n{name} Agent:")
@@ -52,7 +53,7 @@ async def test_medgemma_agent():
     logger.info("Testing MedGemma Agent")
     logger.info("=" * 60)
     
-    client = AgentClient("http://localhost:9101")
+    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9101"))
     
     queries = [
         "What are the common symptoms of hypertension?",
@@ -87,7 +88,7 @@ async def test_clinical_agent():
     logger.info("Testing Clinical Research Agent")
     logger.info("=" * 60)
     
-    client = AgentClient("http://localhost:9102")
+    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9102"))
     
     queries = [
         {
@@ -126,7 +127,7 @@ async def test_router_agent():
     logger.info("Testing Router Agent (Orchestration)")
     logger.info("=" * 60)
     
-    client = AgentClient("http://localhost:9100")
+    client = ClientFactory.create_client(JsonRpcTransport(url="http://localhost:9100"))
     
     test_cases = [
         {
@@ -198,7 +199,7 @@ async def test_end_to_end():
         "Show me patients with uncontrolled hypertension"
     ]
     
-    router_client = AgentClient("http://localhost:9100")
+    router_client = A2AClient("http://localhost:9100")
     conversation_id = "test-conversation-001"
     
     for i, query in enumerate(conversation, 1):
@@ -243,4 +244,17 @@ async def main():
         logger.error(f"Test suite failed: {e}", exc_info=True)
 
 if __name__ == "__main__":
+    import sys
+    
+    # Check for --env-file parameter
+    env_file = ".env"
+    for i, arg in enumerate(sys.argv[1:]):
+        if arg == "--env-file" and i + 1 < len(sys.argv[1:]):
+            env_file = sys.argv[i + 2]
+            break
+    
+    # Load environment from specified file
+    from dotenv import load_dotenv
+    load_dotenv(env_file)
+    
     asyncio.run(main())

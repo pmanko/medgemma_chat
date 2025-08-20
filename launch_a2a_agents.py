@@ -7,16 +7,11 @@ Starts all three agents as separate services
 import asyncio
 import sys
 import os
+import subprocess
 import signal
 import logging
-from typing import Dict, Any
-import uvicorn
-from a2a.server import AgentServer
-
-# Add server directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from server.sdk_agents import MedGemmaAgent, ClinicalResearchAgent, RouterAgent
+from typing import List
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(
@@ -25,111 +20,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global flag for graceful shutdown
-shutdown_event = asyncio.Event()
+# Global list to track subprocesses
+processes: List[subprocess.Popen] = []
 
 def signal_handler(sig, frame):
     """Handle shutdown signals"""
-    logger.info(f"Received signal {sig}, initiating graceful shutdown...")
-    shutdown_event.set()
+    logger.info(f"Received signal {sig}, shutting down agents...")
+    for proc in processes:
+        if proc.poll() is None:  # Process is still running
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    sys.exit(0)
 
-async def start_medgemma_agent(port: int = 9101):
-    """Start MedGemma agent server"""
-    logger.info(f"Starting MedGemma agent on port {port}")
-    agent = MedGemmaAgent()
-    server = AgentServer(agent)
+def start_agent(name: str, module: str, port: int) -> subprocess.Popen:
+    """Start an agent as a subprocess"""
+    logger.info(f"Starting {name} on port {port}")
     
-    config = uvicorn.Config(
-        server.app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        access_log=False
+    # Use poetry run to ensure correct environment
+    cmd = [
+        "poetry", "run", "python", "-m",
+        module,
+        "--host", "0.0.0.0",
+        "--port", str(port)
+    ]
+    
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
     )
-    server_instance = uvicorn.Server(config)
     
-    # Run until shutdown
-    await server_instance.serve()
-    await agent.cleanup()
+    processes.append(proc)
+    return proc
 
-async def start_clinical_agent(port: int = 9102):
-    """Start Clinical Research agent server"""
-    logger.info(f"Starting Clinical Research agent on port {port}")
-    agent = ClinicalResearchAgent()
-    server = AgentServer(agent)
-    
-    config = uvicorn.Config(
-        server.app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        access_log=False
-    )
-    server_instance = uvicorn.Server(config)
-    
-    # Run until shutdown
-    await server_instance.serve()
-    await agent.cleanup()
-
-async def start_router_agent(port: int = 9100):
-    """Start Router agent server"""
-    logger.info(f"Starting Router agent on port {port}")
-    
-    # Wait a bit for other agents to start
-    await asyncio.sleep(2)
-    
-    agent = RouterAgent()
-    server = AgentServer(agent)
-    
-    config = uvicorn.Config(
-        server.app,
-        host="0.0.0.0",
-        port=port,
-        log_level="info",
-        access_log=False
-    )
-    server_instance = uvicorn.Server(config)
-    
-    # Run until shutdown
-    await server_instance.serve()
-    await agent.cleanup()
-
-async def test_agents():
-    """Test that all agents are responding"""
+async def check_agent_health(url: str, name: str, max_retries: int = 10):
+    """Check if an agent is responding"""
     import httpx
     
-    await asyncio.sleep(3)  # Wait for agents to start
-    
-    async with httpx.AsyncClient() as client:
-        agents = [
-            ("Router", "http://localhost:9100"),
-            ("MedGemma", "http://localhost:9101"),
-            ("Clinical", "http://localhost:9102")
-        ]
-        
-        for name, url in agents:
-            try:
-                # Test agent card endpoint
-                response = await client.post(
-                    url,
-                    json={
-                        "jsonrpc": "2.0",
-                        "method": "get_agent_card",
-                        "params": {},
-                        "id": 1
-                    }
-                )
+    for i in range(max_retries):
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{url}/.well-known/agent.json")
                 if response.status_code == 200:
                     data = response.json()
-                    if "result" in data:
-                        card = data["result"]
-                        logger.info(f"✓ {name} agent ready: {card.get('name', 'Unknown')}")
-                    else:
-                        logger.warning(f"⚠ {name} agent responded but no card: {data}")
-                else:
-                    logger.error(f"✗ {name} agent error: HTTP {response.status_code}")
-            except Exception as e:
-                logger.error(f"✗ {name} agent not responding: {e}")
+                    logger.info(f"✓ {name} agent ready: {data.get('name', 'Unknown')}")
+                    return True
+        except Exception:
+            await asyncio.sleep(2)
+    
+    logger.error(f"✗ {name} agent failed to start")
+    return False
 
 async def main():
     """Main entry point"""
@@ -138,53 +82,66 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Parse command line arguments
-    if len(sys.argv) > 1:
-        agent_type = sys.argv[1].lower()
+    # Start agents
+    agents = [
+        ("MedGemma", "server.sdk_agents.medgemma_server", 9101),
+        ("Clinical", "server.sdk_agents.clinical_server", 9102),
+        ("Router", "server.sdk_agents.router_server", 9100),
+    ]
+    
+    for name, module, port in agents:
+        start_agent(name, module, port)
+    
+    # Wait a bit for agents to start
+    await asyncio.sleep(3)
+    
+    # Check agent health
+    health_checks = [
+        check_agent_health(f"http://localhost:{port}", name)
+        for name, _, port in agents
+    ]
+    
+    results = await asyncio.gather(*health_checks)
+    
+    if all(results):
+        logger.info("=" * 60)
+        logger.info("All agents started successfully!")
+        logger.info("=" * 60)
+        logger.info("Agent endpoints:")
+        for name, _, port in agents:
+            logger.info(f"  {name}: http://localhost:{port}")
+        logger.info("=" * 60)
+        logger.info("Press Ctrl+C to stop all agents")
         
-        if agent_type == "medgemma":
-            await start_medgemma_agent()
-        elif agent_type == "clinical":
-            await start_clinical_agent()
-        elif agent_type == "router":
-            await start_router_agent()
-        elif agent_type == "test":
-            await test_agents()
-        else:
-            logger.error(f"Unknown agent type: {agent_type}")
-            print("Usage: python launch_a2a_agents.py [medgemma|clinical|router|all|test]")
-            sys.exit(1)
-    else:
-        # Start all agents concurrently
-        logger.info("Starting all A2A agents...")
-        
-        # Create tasks for all agents
-        tasks = [
-            asyncio.create_task(start_medgemma_agent()),
-            asyncio.create_task(start_clinical_agent()),
-            asyncio.create_task(start_router_agent()),
-        ]
-        
-        # Also run a test after startup
-        asyncio.create_task(test_agents())
-        
+        # Keep running until interrupted
         try:
-            # Wait for shutdown signal
-            await shutdown_event.wait()
-            
-            # Cancel all tasks
-            for task in tasks:
-                task.cancel()
-            
-            # Wait for tasks to complete
-            await asyncio.gather(*tasks, return_exceptions=True)
-            
+            while True:
+                await asyncio.sleep(1)
+                # Check if any process has died
+                for proc, (name, _, _) in zip(processes, agents):
+                    if proc.poll() is not None:
+                        logger.error(f"{name} agent has stopped unexpectedly")
+                        signal_handler(signal.SIGTERM, None)
         except KeyboardInterrupt:
-            logger.info("Keyboard interrupt received")
-        finally:
-            logger.info("All agents stopped")
+            pass
+    else:
+        logger.error("Some agents failed to start")
+        signal_handler(signal.SIGTERM, None)
 
 if __name__ == "__main__":
+    # Check for --env-file parameter
+    env_file = ".env"
+    for i, arg in enumerate(sys.argv[1:]):
+        if arg == "--env-file" and i + 1 < len(sys.argv[1:]):
+            env_file = sys.argv[i + 2]
+            # Remove these args so they don't get passed to subprocesses
+            sys.argv.pop(i + 1)
+            sys.argv.pop(i + 1)
+            break
+    
+    # Load environment from specified file
+    load_dotenv(env_file)
+    
     # Check for required environment variables
     required_vars = ["LLM_BASE_URL"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -201,9 +158,10 @@ if __name__ == "__main__":
     logger.info(f"LLM Base URL: {os.getenv('LLM_BASE_URL')}")
     logger.info(f"General Model: {os.getenv('GENERAL_MODEL', 'Not set')}")
     logger.info(f"Medical Model: {os.getenv('MED_MODEL', 'Not set')}")
-    logger.info(f"Orchestrator: {os.getenv('ORCHESTRATOR_PROVIDER', 'openai')}")
-    logger.info(f"FHIR Server: {os.getenv('OPENMRS_FHIR_BASE_URL', 'Not configured')}")
-    logger.info(f"Spark SQL: {os.getenv('SPARK_THRIFT_HOST', 'Not configured')}")
+    orchestrator_provider = os.getenv('ORCHESTRATOR_PROVIDER') or 'local'
+    orchestrator_model = os.getenv('ORCHESTRATOR_MODEL', 'Not set')
+    logger.info(f"Orchestrator Provider: {orchestrator_provider}")
+    logger.info(f"Orchestrator Model: {orchestrator_model}")
     logger.info("=" * 60)
     
     # Run the main async function

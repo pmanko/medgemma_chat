@@ -1,159 +1,119 @@
-# 🏥 Medical Multi-Agent Chat System
+# Multi-Model Chat (A2A-enabled)
 
-> **Production-ready A2A protocol implementation for collaborative medical AI** - Three specialized agents working together to answer complex medical questions using the official [Agent-to-Agent (A2A) SDK](https://github.com/a2aproject/a2a-samples).
+Fast, lightweight chat application with two modes:
+- Direct per-model chat (general, medical) via external OpenAI-compatible endpoints
+- Agents (A2A) mode that semantically routes to specialist agents and optionally queries FHIR sources
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![A2A SDK](https://img.shields.io/badge/A2A%20SDK-0.3.0+-green.svg)](https://github.com/a2aproject/a2a-python)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+References: A2A design and SDK patterns are aligned with the official guides: [Practical Guide to the Official A2A SDK Python](https://a2aprotocol.ai/blog/a2a-sdk-python), [Python A2A: A Comprehensive Guide](https://a2aprotocol.ai/docs/guide/python-a2a.html). For FHIR analytics via Parquet-on-FHIR, see [OHS FHIR Analytics](https://developers.google.com/open-health-stack/fhir-analytics).
 
-## ✨ What Makes This Special?
+## A2A primer (what and why)
 
-This isn't just another chatbot - it's a **collaborative AI system** where specialized medical agents work together:
+Agent2Agent (A2A) is a protocol for interoperable agents. Core ideas:
+- Agents are discoverable via a registry/manifest that lists their skills and input schemas.
+- Agents communicate via a message bus with a standardized envelope (id, sender, receiver, task/skill, payload, status).
+- Orchestrators select a skill and arguments, then invoke the right agent without hard-coding service calls.
 
-- 🧬 **MedGemma Agent** - Medical Q&A expert using Google's MedGemma model
-- 🔬 **Clinical Research Agent** - Queries FHIR databases and synthesizes patient data
-- 🧭 **Router Agent** - Intelligently orchestrates requests to the right specialist
+This project simulates A2A locally while matching the protocol’s shape (registry + skills + standardized messages) and can run in fully native A2A mode as separate services.
 
-Built on the **official A2A protocol**, these agents can discover each other, communicate seamlessly, and even integrate with external A2A-compliant agents worldwide.
+## How we apply A2A here
 
-## 🚀 Quick Start (2 minutes)
+- Registry and discovery
+  - Each agent registers itself (id, description) and advertises its skills with input schemas.
+  - `GET /manifest` (simulated mode) exposes current agents and skills.
+  - Native mode: each service serves `/.well-known/agent.json`.
 
+- Skills-based orchestration
+  - The router (A2A service in native mode) asks the orchestrator LLM to return `{ "skill": string, "args": object }` and invokes the chosen skill.
+
+- Agents and skills (current)
+  - `medgemma_agent`: `answer_medical_question(query)`
+  - `clinical_research_agent`: `clinical_research(query, scope: facility|hie, facility_id?, org_ids?)`
+
+- Orchestrator options
+  - `ORCHESTRATOR_PROVIDER=gemini` or `openai` (OpenAI-compatible local/cloud), configured in the FastAPI bridge.
+
+## Architecture
+
+- Frontend: `client/index.html`, `client/script.js`
+- FastAPI bridge: `server/main.py`
+  - `/chat` calls router service in native mode or uses in-process simulation when disabled.
+- Native A2A services (optional): `server/a2a_services/*`
+  - Router: `router_service.py`
+  - MedGemma: `medgemma_service.py`
+  - Clinical Research: `clinical_service.py`
+
+## Quick Start (native A2A)
+
+Requirements: Python 3.9–3.12
+
+1) Configure environment
 ```bash
-# 1. Clone and setup
-git clone <repo>
-cd projects/multiagent_chat
-poetry install
-
-# 2. Configure LM Studio endpoint (just 1 line!)
 cp env.example .env
-echo "LLM_BASE_URL=http://localhost:1234" >> .env
-
-# 3. Launch all agents
-poetry run python launch_a2a_agents.py
-
-# 🎉 Open http://localhost:8080 and start chatting!
+# Edit .env with:
+# LLM_BASE_URL, LLM_API_KEY, GENERAL_MODEL, MED_MODEL
+# OPENMRS_FHIR_BASE_URL, OPENMRS_USERNAME, OPENMRS_PASSWORD
+# SPARK_THRIFT_HOST, SPARK_THRIFT_PORT, SPARK_THRIFT_DATABASE, SPARK_THRIFT_USER, SPARK_THRIFT_PASSWORD
+# A2A_MEDGEMMA_URL=http://localhost:9101
+# A2A_CLINICAL_URL=http://localhost:9102
+# A2A_ROUTER_URL=http://localhost:9100
+# ENABLE_A2A_NATIVE=true
 ```
 
-## 🏗️ Architecture
-
-```mermaid
-graph LR
-    U[User] --> W[Web UI]
-    W --> R[Router Agent<br/>:9100]
-    R --> M[MedGemma Agent<br/>:9101]
-    R --> C[Clinical Agent<br/>:9102]
-    M --> LLM[LLM Service]
-    C --> FHIR[FHIR Server]
-    C --> SQL[SQL-on-FHIR]
-```
-
-Each agent is a standalone microservice following the A2A protocol:
-- **Protocol**: JSON-RPC 2.0 over HTTP
-- **Discovery**: Agent cards with skill definitions
-- **Type Safety**: Full Pydantic validation
-- **Async**: Built on FastAPI/ASGI
-
-## 📚 Documentation
-
-### Getting Started
-- [**Installation Guide**](docs/getting-started/installation.md) - Dependencies and setup
-- [**Quick Start Tutorial**](docs/getting-started/quick-start.md) - Your first medical query
-- [**Configuration**](docs/getting-started/configuration.md) - LLM providers, FHIR setup
-
-### Architecture & Design
-- [**System Overview**](docs/architecture/overview.md) - How it all works
-- [**Agent Capabilities**](docs/architecture/agents.md) - What each agent does
-- [**Data Flow**](docs/architecture/data-flow.md) - Message routing explained
-
-### Development
-- [**Creating New Agents**](docs/development/creating-agents.md) - Build your own specialist
-- [**Testing Guide**](docs/development/testing.md) - Unit and integration tests
-- [**API Reference**](docs/development/api-reference.md) - Protocol details
-
-### Deployment
-- [**Docker Deployment**](docs/deployment/docker.md) - Containerized setup
-- [**Monitoring**](docs/deployment/monitoring.md) - Health checks and logging
-
-## 🎯 Example Queries
-
-Try these to see the agents in action:
-
-```
-"What are the symptoms of diabetes?"
-→ Routes to MedGemma for medical knowledge
-
-"Show me recent blood pressure readings for patients"
-→ Routes to Clinical Agent for FHIR data
-
-"What medications are used for hypertension?"
-→ Routes to MedGemma for treatment information
-
-"Generate a report of diabetic patients in facility F001"
-→ Routes to Clinical Agent with facility scope
-```
-
-## 🛠️ Key Features
-
-- ✅ **True A2A Protocol** - Not a simulation, real protocol implementation
-- ✅ **Microservices Architecture** - Each agent runs independently
-- ✅ **Multiple LLM Support** - LM Studio, OpenAI, Gemini, Ollama
-- ✅ **FHIR Integration** - OpenMRS, HAPI FHIR, SQL-on-FHIR
-- ✅ **Type-Safe** - Pydantic models throughout
-- ✅ **Production Ready** - Docker, health checks, logging
-- ✅ **Extensible** - Easy to add new agents
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-### Add a New Agent
-```python
-from a2a import Agent
-from a2a.decorators import skill
-
-class MyAgent(Agent):
-    @skill("my_skill")
-    async def my_skill(self, query: str) -> dict:
-        # Your implementation
-        return {"answer": "..."}
-```
-
-See our [Creating Agents Guide](docs/development/creating-agents.md) for details.
-
-### Development Setup
+2) Install and run
 ```bash
-# Install with dev dependencies
-poetry install --with dev
-
-# Run tests
-pytest
-
-# Format code
-black . && isort .
+poetry install
+# Start MedGemma agent
+poetry run uvicorn server.a2a_services.medgemma_service:app --host 0.0.0.0 --port 9101
+# Start Clinical agent (separate terminal)
+poetry run uvicorn server.a2a_services.clinical_service:app --host 0.0.0.0 --port 9102
+# Start Router agent (separate terminal)
+poetry run uvicorn server.a2a_services.router_service:app --host 0.0.0.0 --port 9100
+# Start FastAPI bridge (separate terminal)
+poetry run uvicorn server.main:app --host 0.0.0.0 --port 3000
 ```
 
-## 🔗 References
+3) Open the UI
+- Open `client/index.html` in your browser
+- Select Agents (A2A) mode; messages go to `/chat`, which forwards to the router agent
 
-- [A2A Protocol Specification](https://a2aprotocol.ai)
-- [A2A Python SDK](https://github.com/a2aproject/a2a-python)
-- [A2A Samples](https://github.com/a2aproject/a2a-samples)
-- [Google MedGemma](https://ai.google.dev/gemma/docs/medgemma)
-- [OpenMRS FHIR](https://openmrs.org/fhir)
+## Quick Start (simulated A2A)
 
-## 📄 License
+```bash
+poetry install
+poetry run uvicorn server.main:app --host 0.0.0.0 --port 3000
+# ENABLE_A2A=true, ENABLE_A2A_NATIVE=false (default) in .env
+```
 
-MIT License - See [LICENSE](LICENSE) for details.
+## Environment Configuration
 
-## 🙏 Acknowledgments
+Core LLMs:
+- `LLM_BASE_URL` (no `/v1`), `LLM_API_KEY`
+- `GENERAL_MODEL`, `MED_MODEL`, `LLM_TEMPERATURE`
 
-Built with:
-- [A2A Protocol](https://a2aprotocol.ai) by the A2A Project team
-- [MedGemma](https://ai.google.dev/gemma) by Google
-- [FastAPI](https://fastapi.tiangolo.com/) by Sebastián Ramírez
-- [FHIR](https://hl7.org/fhir/) by HL7
+Orchestrator (FastAPI bridge):
+- `ORCHESTRATOR_PROVIDER` = `gemini` or `openai`
+- `ORCHESTRATOR_MODEL`, `GEMINI_API_KEY` (if provider is `gemini`)
 
----
+A2A mode:
+- `ENABLE_A2A=true` enables A2A
+- `ENABLE_A2A_NATIVE=true` uses native services; set service URLs:
+  - `A2A_ROUTER_URL`, `A2A_MEDGEMMA_URL`, `A2A_CLINICAL_URL`
 
-<p align="center">
-  <i>Building the future of collaborative medical AI, one agent at a time.</i>
-</p>
+FHIR + SQL-on-FHIR:
+- `OPENMRS_FHIR_BASE_URL`, `OPENMRS_USERNAME`, `OPENMRS_PASSWORD`
+- `SPARK_THRIFT_HOST`, `SPARK_THRIFT_PORT`, `SPARK_THRIFT_DATABASE`, `SPARK_THRIFT_USER`, `SPARK_THRIFT_PASSWORD`
+
+## API
+
+- Native manifests: `GET /.well-known/agent.json` (per service)
+- Discovery (simulated): `GET /manifest`
+- Orchestrated chat: `POST /chat` (FastAPI bridge)
+- Direct chat (back-compat): `POST /generate/general`, `POST /generate/medgemma`
+
+## Roadmap
+
+- Phase 2: add a hybrid RAG path with biomedical text embeddings for semantic retrieval over text-heavy FHIR fields; retain MedGemma for clinical synthesis.
+
+## License
+
+MIT

@@ -93,9 +93,9 @@ Routes incoming queries to the most appropriate specialist agent.
 }
 ```
 
-### Routing Logic
+### Routing Logic and Models
 
-The router uses an LLM to analyze:
+The router uses an LLM to analyze (default `ORCHESTRATOR_MODEL=meta-llama-3.1-8b-instruct`):
 1. Query content and intent
 2. Available agents and their capabilities
 3. Context (scope, facility, etc.)
@@ -189,7 +189,9 @@ Provides comprehensive answers to medical questions.
 }
 ```
 
-### Capabilities
+### Capabilities and Models
+
+Default Med model: `MED_MODEL=medgemma-4b-it-mlx`
 
 **Medical Domains**:
 - General medicine
@@ -322,7 +324,9 @@ Retrieves and analyzes clinical data from various sources.
 }
 ```
 
-### Data Sources
+### Data Sources and Models
+
+Default clinical/general model: `GENERAL_MODEL=gemma-3-12b-it`
 
 **FHIR Servers**:
 - OpenMRS FHIR R4
@@ -398,43 +402,66 @@ Example: "Explain hypertension and show patients with it"
 
 ## Adding New Agents
 
-### Agent Template
+### Agent Implementation Pattern
 
+Each agent requires two components:
+
+#### 1. Agent Executor
 ```python
-from a2a import Agent
-from a2a.types import AgentCard, Skill
-from a2a.decorators import skill
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.types import AgentCard, AgentSkill
 
-class NewSpecialistAgent(Agent):
-    
+class NewAgentExecutor(AgentExecutor):
+    async def execute(
+        self,
+        context: RequestContext,
+        event_queue: EventQueue,
+    ) -> None:
+        # Process the request
+        query = context.get_user_input()
+        # ... agent logic ...
+        
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> Task | None:
+        # Optional: handle cancellation
+        pass
+        
     async def get_agent_card(self) -> AgentCard:
         return AgentCard(
             name="New Specialist",
             description="What this agent does",
             version="1.0.0",
-            skills=[
-                Skill(
-                    name="new_skill",
-                    description="Skill description",
-                    input_schema={...},
-                    output_schema={...}
-                )
-            ]
+            skills=[...]
         )
+```
+
+#### 2. Agent Server
+```python
+from a2a.server.apps import A2ARESTFastAPIApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+
+def create_new_agent_server():
+    executor = NewAgentExecutor()
+    handler = DefaultRequestHandler(executor, InMemoryTaskStore())
     
-    @skill("new_skill")
-    async def new_skill(self, param: str) -> dict:
-        # Implementation
-        return {"result": "..."}
+    agent_card = executor.get_agent_card()
+    agent_card.url = "http://localhost:9103/"
+    
+    server = A2ARESTFastAPIApplication(agent_card, handler)
+    return server.build()
 ```
 
 ### Registration Process
 
-1. Create agent class
-2. Define skills with schemas
-3. Implement skill methods
-4. Launch on unique port
-5. Update router configuration
+1. Create executor class inheriting from `AgentExecutor`
+2. Implement `execute()` and optionally `cancel()` methods
+3. Define agent card with skills
+4. Create server application
+5. Launch on unique port
+6. Register with router agent
 
 ## Agent Configuration
 
@@ -503,3 +530,4 @@ This modular design allows for:
 - Clear separation of concerns
 - Robust error handling
 - Future extensibility
+

@@ -57,7 +57,7 @@ A lightweight translation layer that:
 
 ### 3. Agent Services
 
-Three specialized microservices, each implementing the A2A protocol:
+Three specialized microservices, each running as an independent A2A server:
 
 #### Router Agent (Port 9100)
 - **Role**: Orchestrator and request router
@@ -83,6 +83,97 @@ Three specialized microservices, each implementing the A2A protocol:
   - Executes SQL on clinical databases
   - Synthesizes data into insights
 - **Skills**: `clinical_research`
+
+## A2A Server Architecture
+
+### Agent Server Components
+
+Each agent in the system runs as an independent A2A server with these components:
+
+1. **AgentExecutor**: The core business logic
+   - Inherits from `a2a.server.agent_execution.AgentExecutor`
+   - Implements `execute()` and optionally `cancel()` methods
+   - Handles the actual processing of requests
+
+2. **A2A Application**: The server wrapper
+   - Uses `A2AStarletteApplication` or `A2ARESTFastAPIApplication`
+   - Handles A2A protocol compliance
+   - Manages HTTP endpoints (including `/.well-known/agent.json`)
+
+3. **Request Handler**: Protocol message handling
+   - Uses `DefaultRequestHandler` from the SDK
+   - Routes JSON-RPC requests to the executor
+   - Manages task lifecycle
+
+4. **Task Store**: State management
+   - Uses `InMemoryTaskStore` for development
+   - Can be replaced with persistent storage for production
+
+### Server Implementation Pattern
+
+```python
+# agent_executor.py
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.types import Task
+
+class MyAgentExecutor(AgentExecutor):
+    async def execute(self, context: RequestContext, event_queue: EventQueue):
+        # Get user input from context
+        query = context.get_user_input()
+        
+        # Process the request and emit events
+        await event_queue.put(...)
+        
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> Task | None:
+        # Optional: handle task cancellation
+        return None
+        
+    async def get_agent_card(self):
+        # Return agent capabilities
+        return AgentCard(...)
+
+# agent_server.py
+from a2a.server.apps import A2ARESTFastAPIApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+
+def create_agent_server():
+    # Create executor and handler
+    executor = MyAgentExecutor()
+    handler = DefaultRequestHandler(
+        agent_executor=executor,
+        task_store=InMemoryTaskStore()
+    )
+    
+    # Get agent card and configure
+    agent_card = executor.get_agent_card()
+    agent_card.url = "http://localhost:9101/"
+    
+    # Create and return FastAPI app
+    server = A2ARESTFastAPIApplication(
+        agent_card=agent_card,
+        http_handler=handler
+    )
+    return server.build()
+
+# Run with uvicorn
+if __name__ == "__main__":
+    import uvicorn
+    app = create_agent_server()
+    uvicorn.run(app, host="0.0.0.0", port=9101)
+```
+
+### Comparison with Google ADK Demo
+
+The A2A demo app uses a hybrid approach:
+- **Host Agent**: Uses Google ADK (Agent Development Kit) for orchestration
+- **Remote Agents**: Use A2A protocol for interoperability
+
+Our implementation uses pure A2A:
+- **Router Agent**: A2A agent that orchestrates other agents
+- **Specialist Agents**: A2A agents for specific domains
+- **Advantage**: Full protocol compliance and no vendor lock-in
 
 ## A2A Protocol Implementation
 
@@ -292,3 +383,4 @@ The architecture provides:
 - ✅ **Production-ready** error handling and monitoring
 
 This design ensures the system can grow from a local development setup to a production-scale medical AI platform while maintaining code quality and operational excellence.
+
