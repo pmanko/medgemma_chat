@@ -33,7 +33,8 @@ def create_clinical_server():
     agent_card = AgentCard(**card_data)
     # Ensure runtime URL
     agent_card.url = "http://localhost:9102/"
-    agent_card.preferred_transport = TransportProtocol.http_json
+    # Ensure compatible transport preference
+    agent_card.preferred_transport = TransportProtocol.jsonrpc
     agent_card.capabilities = AgentCapabilities(streaming=True)
     
     # Create the server application (Starlette to expose .well-known)

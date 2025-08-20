@@ -32,7 +32,7 @@ class ClinicalExecutor(AgentExecutor):
     def __init__(self):
         self.llm_base_url = os.getenv("LLM_BASE_URL", "http://localhost:1234")
         self.llm_api_key = os.getenv("LLM_API_KEY", "")
-        self.general_model = os.getenv("GENERAL_MODEL", "gemma-3-12b-it")
+        self.general_model = os.getenv("CLINICAL_RESEARCH_MODEL", 'gemma-3-1b-it')
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
         self.http_client = httpx.AsyncClient(timeout=180.0)
         

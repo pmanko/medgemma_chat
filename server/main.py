@@ -85,7 +85,11 @@ def read_root():
         "status": "Server is running",
         "uptime_seconds": round(time.time() - server_start_time, 2),
         "a2a_enabled": agent_config.enable_a2a,
-        "direct_models": {"general": llm_config.general_model, "medical": llm_config.med_model},
+        "direct_models": {
+            "orchestrator": llm_config.orchestrator_model, 
+            "medical": llm_config.med_model,
+            "clinical": llm_config.clinical_research_model
+        },
     }
 
 
@@ -107,8 +111,8 @@ def health_check():
     return {"status": "healthy", "uptime_seconds": round(uptime, 2), "memory": memory_info, "timestamp": time.time()}
 
 
-@app.post("/generate/general", response_model=PromptResponse)
-def generate_general(request: PromptRequest):
+@app.post("/generate/orchestrator", response_model=PromptResponse)
+def generate_orchestrator(request: PromptRequest):
     try:
         messages = []
         if request.system_prompt:
@@ -117,23 +121,23 @@ def generate_general(request: PromptRequest):
             messages.append({"role": m.role if m.role in ("user", "assistant", "system") else "user", "content": m.content})
         messages.append({"role": "user", "content": request.prompt})
         text = llm_client.generate_chat(
-            model=llm_config.general_model,
+            model=llm_config.orchestrator_model,
             messages=messages,
             temperature=llm_config.temperature,
             max_tokens=min(request.max_new_tokens, 1024),
         )
         return {"response": text}
     except Exception as e:
-        logger.warning(f"General generation unavailable: {e}")
+        logger.warning(f"Orchestrator generation unavailable: {e}")
         fallback = (
-            "The general LLM backend is currently unavailable. "
+            "The orchestrator LLM backend is currently unavailable. "
             "Please try again shortly or use Agents (A2A) mode if configured."
         )
         return {"response": fallback}
 
 
-@app.post("/generate/medgemma", response_model=PromptResponse)
-def generate_medgemma(request: PromptRequest):
+@app.post("/generate/medical", response_model=PromptResponse)
+def generate_medical(request: PromptRequest):
     try:
         system = request.system_prompt or (
             "You are a medical AI assistant. Provide accurate, evidence-based information. Include a brief disclaimer."
@@ -155,6 +159,34 @@ def generate_medgemma(request: PromptRequest):
         logger.warning(f"Medical LLM unavailable: {e}")
         fallback = (
             "The medical LLM backend is currently unavailable. "
+            "Please try again or use Agents (A2A) mode if configured."
+        )
+        return {"response": fallback}
+
+
+@app.post("/generate/clinical", response_model=PromptResponse)
+def generate_clinical(request: PromptRequest):
+    try:
+        system = request.system_prompt or (
+            "You are a clinical research assistant. Provide evidence-based analysis and insights."
+        )
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        for m in request.conversation_history[-16:]:
+            messages.append({"role": m.role if m.role in ("user", "assistant", "system") else "user", "content": m.content})
+        messages.append({"role": "user", "content": request.prompt})
+        text = llm_client.generate_chat(
+            model=llm_config.clinical_research_model,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=min(request.max_new_tokens, 1000),
+        )
+        return {"response": text}
+    except Exception as e:
+        logger.warning(f"Clinical research LLM unavailable: {e}")
+        fallback = (
+            "The clinical research LLM backend is currently unavailable. "
             "Please try again or use Agents (A2A) mode if configured."
         )
         return {"response": fallback}

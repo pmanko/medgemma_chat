@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
-from a2a.types import AgentCard
+from a2a.types import AgentCard, TransportProtocol
 from .medgemma_executor import MedGemmaExecutor
 
 # Load environment variables
@@ -42,6 +42,8 @@ def main(host: str, port: int):
     # Ensure URL reflects runtime host/port
     card_data['url'] = f'http://{host}:{port}/'
     agent_card = AgentCard(**card_data)
+    # Ensure compatible transport preference
+    agent_card.preferred_transport = TransportProtocol.jsonrpc
     
     # Create executor and request handler
     agent_executor = MedGemmaExecutor()

@@ -2,10 +2,12 @@
   import { onMount } from 'svelte';
 
   let mode: 'agents' | 'direct' = 'agents';
-  let selectedModel: 'general' | 'medgemma' = 'general';
+  let selectedModel: 'orchestrator' | 'medical' | 'clinical' = 'orchestrator';
   let prompt = '';
   let isSending = false;
-  const SERVER_URL = '';
+  // Base URL for backend API. In dev, proxy handles it; in preview/build, set VITE_API_BASE_URL
+  const SERVER_URL: string = (import.meta as any).env?.VITE_API_BASE_URL || '';
+  console.log('SERVER_URL configured as:', SERVER_URL);
 
   import { marked } from 'marked';
   type ChatMsg = { sender: 'user' | 'model' | 'system'; text: string; html?: string };
@@ -70,8 +72,9 @@
 
   function setModeAgents() { mode = 'agents'; }
   function setModeDirect() { mode = 'direct'; }
-  function setModelGeneral() { selectedModel = 'general'; }
-  function setModelMed() { selectedModel = 'medgemma'; }
+  function setModelOrchestrator() { selectedModel = 'orchestrator'; }
+  function setModelMedical() { selectedModel = 'medical'; }
+  function setModelClinical() { selectedModel = 'clinical'; }
   function clearHistory() {
     messages = [ { sender: 'system', text: 'Conversation history cleared. Starting fresh conversation.' } ];
   }
@@ -96,10 +99,15 @@
         {#if mode === 'direct'}
         <li>
           <details class="dropdown">
-            <summary><span>{selectedModel === 'general' ? '📱 Gemma 3 12B' : '🏥 MedGemma'}</span></summary>
+            <summary><span>{
+              selectedModel === 'orchestrator' ? '🎯 Llama 3.1 8B' :
+              selectedModel === 'medical' ? '🏥 MedGemma 4B' :
+              '🔬 Gemma 3 1B'
+            }</span></summary>
             <ul>
-              <li><button class="link-like" on:click|preventDefault={setModelGeneral}>📱 Gemma 3 12B (General)</button></li>
-              <li><button class="link-like" on:click|preventDefault={setModelMed}>🏥 MedGemma (Medical)</button></li>
+              <li><button class="link-like" on:click|preventDefault={setModelOrchestrator}>🎯 Llama 3.1 8B (Orchestrator)</button></li>
+              <li><button class="link-like" on:click|preventDefault={setModelMedical}>🏥 MedGemma 4B (Medical)</button></li>
+              <li><button class="link-like" on:click|preventDefault={setModelClinical}>🔬 Gemma 3 1B (Clinical Research)</button></li>
             </ul>
           </details>
         </li>

@@ -4,10 +4,10 @@ Provides smart defaults for all settings to minimize configuration burden.
 """
 
 import os
-    from dotenv import load_dotenv
+from dotenv import load_dotenv
 
 # Load environment variables from .env file
-    load_dotenv()
+load_dotenv()
 
 # ==============================================================================
 # LLM Configuration
@@ -18,12 +18,29 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:1234")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")  # Empty for local LM Studio
 
 # Model selection
-GENERAL_MODEL = os.getenv("GENERAL_MODEL", "llama-3-8b-instruct")
-MED_MODEL = os.getenv("MED_MODEL", GENERAL_MODEL)  # Defaults to same as general
+ORCHESTRATOR_MODEL = os.getenv("ORCHESTRATOR_MODEL", "meta-llama-3.1-8b-instruct")
+MED_MODEL = os.getenv("MED_MODEL", "medgemma-4b-it-mlx")
+CLINICAL_RESEARCH_MODEL = os.getenv("CLINICAL_RESEARCH_MODEL", "gemma-3-1b-it")
+
+# Legacy alias for backward compatibility
+GENERAL_MODEL = ORCHESTRATOR_MODEL
 
 # LLM parameters (smart defaults, not exposed in env.example)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
+
+# Create a config object for cleaner imports
+class LLMConfig:
+    base_url = LLM_BASE_URL
+    api_key = LLM_API_KEY
+    orchestrator_model = ORCHESTRATOR_MODEL
+    med_model = MED_MODEL
+    clinical_research_model = CLINICAL_RESEARCH_MODEL
+    general_model = GENERAL_MODEL  # backward compat
+    temperature = LLM_TEMPERATURE
+    max_tokens = LLM_MAX_TOKENS
+
+llm_config = LLMConfig()
 
 # ==============================================================================
 # Orchestrator Configuration (Optional Gemini)
@@ -62,8 +79,9 @@ ENABLE_A2A_NATIVE = True
 
 # OpenMRS FHIR configuration
 OPENMRS_FHIR_BASE_URL = os.getenv("OPENMRS_FHIR_BASE_URL", "")
-OPENMRS_USERNAME = os.getenv("OPENMRS_USERNAME", "admin")
-OPENMRS_PASSWORD = os.getenv("OPENMRS_PASSWORD", "Admin123")
+# Use default OpenMRS credentials if FHIR is configured but credentials not provided
+OPENMRS_USERNAME = os.getenv("OPENMRS_USERNAME", "admin" if OPENMRS_FHIR_BASE_URL else "")
+OPENMRS_PASSWORD = os.getenv("OPENMRS_PASSWORD", "Admin123" if OPENMRS_FHIR_BASE_URL else "")
 
 # Local FHIR Parquet files
 FHIR_PARQUET_DIR = os.getenv("FHIR_PARQUET_DIR", "")
@@ -119,6 +137,48 @@ DEBUG = ENV == "development"
 RELOAD = os.getenv("RELOAD", str(DEBUG)).lower() == "true"
 
 # ==============================================================================
+# Config Objects for cleaner imports
+# ==============================================================================
+
+class AgentConfig:
+    enable_a2a = ENABLE_A2A
+    enable_a2a_native = ENABLE_A2A_NATIVE
+    chat_timeout_seconds = CHAT_TIMEOUT_SECONDS
+    startup_timeout = AGENT_STARTUP_TIMEOUT
+
+class A2AEndpoints:
+    router_url = A2A_ROUTER_URL
+    medgemma_url = A2A_MEDGEMMA_URL
+    clinical_url = A2A_CLINICAL_URL
+
+class OrchestatorConfig:
+    provider = ORCHESTRATOR_PROVIDER
+    model = ORCHESTRATOR_MODEL
+    gemini_api_key = GEMINI_API_KEY
+
+class OpenMRSConfig:
+    fhir_base_url = OPENMRS_FHIR_BASE_URL
+    auth_username = OPENMRS_USERNAME
+    auth_password = OPENMRS_PASSWORD
+
+class SparkConfig:
+    host = SPARK_THRIFT_HOST
+    port = SPARK_THRIFT_PORT
+    database = SPARK_THRIFT_DATABASE
+    username = None
+    password = None
+
+class LocalConfig:
+    parquet_dir = FHIR_PARQUET_DIR
+
+agent_config = AgentConfig()
+a2a_endpoints = A2AEndpoints()
+orchestrator_config = OrchestatorConfig()
+openmrs_config = OpenMRSConfig()
+spark_config = SparkConfig()
+local_config = LocalConfig()
+
+# ==============================================================================
 # Validation
 # ==============================================================================
 
@@ -133,9 +193,7 @@ def validate_config():
     if not GENERAL_MODEL:
         errors.append("GENERAL_MODEL is required. Set it to your model name in LM Studio")
     
-    # Check optional features
-    if OPENMRS_FHIR_BASE_URL and not OPENMRS_USERNAME:
-        errors.append("OPENMRS_USERNAME required when using OpenMRS FHIR")
+    # Check optional features - credentials are auto-set with defaults when FHIR URL is provided
     
     if errors:
         print("Configuration errors:")
@@ -145,9 +203,11 @@ def validate_config():
     
     # Log configuration summary (without secrets)
     print("Configuration loaded:")
-    print(f"  - LLM: {LLM_BASE_URL} using {GENERAL_MODEL}")
+    print(f"  - LLM: {LLM_BASE_URL}")
+    print(f"  - Orchestrator Model: {ORCHESTRATOR_MODEL}")
     print(f"  - Medical Model: {MED_MODEL}")
-    print(f"  - Orchestrator: {ORCHESTRATOR_PROVIDER} using {ORCHESTRATOR_MODEL}")
+    print(f"  - Clinical Research Model: {CLINICAL_RESEARCH_MODEL}")
+    print(f"  - Orchestrator Provider: {ORCHESTRATOR_PROVIDER}")
     if OPENMRS_FHIR_BASE_URL:
         print(f"  - FHIR: Connected to {OPENMRS_FHIR_BASE_URL}")
     if FHIR_PARQUET_DIR:
