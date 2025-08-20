@@ -14,7 +14,7 @@ pydantic = "^2.0.0"
 python-multipart = "^0.0.6"
 psutil = "^5.9.0"
 requests = "^2.32.0"
-httpx = "^0.25.0"
+httpx = "^0.28.1"
 python-dotenv = "^1.0.1"
 a2a-sdk = "^0.3.0"  # Official A2A SDK
 PyHive = {version = "^0.7.0", optional = true}
