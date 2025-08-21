@@ -122,8 +122,7 @@ class ClinicalExecutor(AgentExecutor):
             # Add the response as an artifact
             await updater.add_artifact(
                 [Part(root=TextPart(text=answer))],
-                name='clinical_analysis',
-                description='Clinical research analysis'
+                name='clinical_analysis'
             )
             
             # Complete the task

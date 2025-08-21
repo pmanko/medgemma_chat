@@ -2,14 +2,14 @@
 
 [[package]]
 name = "a2a-sdk"
-version = "0.3.1"
+version = "0.3.2"
 description = "A2A Python SDK"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "a2a_sdk-0.3.1-py3-none-any.whl", hash = "sha256:904bb1b58d8ace6382a9c4c279d102267c5cda393f4ab42583fdb63551e1cd3b"},
-    {file = "a2a_sdk-0.3.1.tar.gz", hash = "sha256:962099062279073a1b5ecd91666f2b0a1db90eb971436fba804af82173d2e305"},
+    {file = "a2a_sdk-0.3.2-py3-none-any.whl", hash = "sha256:8ea1cff85d0f6a698884cc4270021463999291ca6d4e742b1d8114df9411ffd4"},
+    {file = "a2a_sdk-0.3.2.tar.gz", hash = "sha256:b18dcee03678ba6d881a20e0bf1312ad34833a81bed9b060813ee254227e69a4"},
 ]
 
 [package.dependencies]
@@ -1655,4 +1655,4 @@ spark = ["PyHive", "pure-sasl", "thrift", "thrift_sasl"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "3b3e2ff3b50a9f2c63fb6625fe18917e8e460fa6942c738bb1516b7e2e4f5454"
+content-hash = "6d81758adbb0f4e687153bfaebec1e345d91435a312196e61ea5893c3c2c7a88"

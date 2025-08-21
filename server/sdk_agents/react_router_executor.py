@@ -60,7 +60,21 @@ class ReactRouterExecutor(AgentExecutor):
 
         except Exception as e:
             logger.error(f"ReAct Router execution failed: {e}", exc_info=True)
-            await updater.update_task(
+            await updater.update_status(
                 state=TaskState.failed,
                 message=f"ReAct routing failed: {str(e)}"
             )
+
+    async def cancel(
+        self, context: RequestContext, event_queue: EventQueue
+    ) -> None:
+        """Handle task cancellation for the ReAct router."""
+        task_updater = TaskUpdater(
+            event_queue,
+            context.current_task.id if context.current_task else None,
+            context.message.context_id if context.message else None,
+        )
+        await task_updater.update_status(
+            state=TaskState.cancelled,
+            message="ReAct routing task was cancelled."
+        )

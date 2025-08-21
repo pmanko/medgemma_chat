@@ -16,7 +16,7 @@ psutil = "^5.9.0"
 requests = "^2.32.0"
 httpx = "^0.28.1"
 python-dotenv = "^1.0.1"
-a2a-sdk = { version = "^0.3.1", extras = ["http-server"] }  # A2A SDK with HTTP server support
+a2a-sdk = {extras = ["http-server"], version = "^0.3.2"}  # A2A SDK with HTTP server support
 PyHive = {version = "^0.7.0", optional = true}
 thrift = {version = "^0.20.0", optional = true}
 thrift_sasl = {version = "^0.4.3", optional = true}

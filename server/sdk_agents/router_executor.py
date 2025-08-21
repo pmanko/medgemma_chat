@@ -6,6 +6,7 @@ Handles orchestration and routing to specialist agents.
 import httpx
 import logging
 import os
+import uuid
 from typing import Dict, Any, Optional
 import json
 
@@ -80,6 +81,7 @@ class RouterAgentExecutor(AgentExecutor):
     async def _route_query(self, query: str) -> Dict[str, Any]:
         """Determine which agent should handle the query."""
         
+        logger.info("Router: Building capabilities list for orchestrator.")
         # Create routing prompt
         agents_info = "\n".join([
             f"- {name}: {info['name']} (skills: {', '.join(info['skills'])})"
@@ -98,7 +100,9 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
             {"role": "user", "content": query}
         ]
         
+        logger.info("Router: Calling orchestrator LLM for routing decision...")
         response = await self._call_llm(messages)
+        logger.info(f"Router: Received raw response from orchestrator: {response}")
         
         try:
             # Parse LLM response
@@ -107,6 +111,7 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
             reasoning = result.get("reasoning", "")
             
             if agent_name not in self.agents:
+                logger.warning(f"Router: LLM returned an unknown agent '{agent_name}'. Falling back to default.")
                 agent_name = "medgemma"  # Default fallback
                 
             return {
@@ -114,11 +119,12 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
                 "reasoning": reasoning,
                 "url": self.agents[agent_name]["url"]
             }
-        except:
+        except Exception:
+            logger.error(f"Router: Failed to parse JSON from orchestrator response. Falling back to keyword routing. Response: {response}")
             # Default to medical agent on parse error
             return {
                 "agent": "medgemma",
-                "reasoning": "Default routing to medical agent",
+                "reasoning": "Default routing to medical agent due to orchestrator failure",
                 "url": self.agents["medgemma"]["url"]
             }
     
@@ -129,36 +135,32 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
     ) -> None:
         """Execute routing logic."""
         
-        # Get the user query
         query = context.get_user_input()
         logger.info(f"Router received query: {query}")
         
-        # Create task updater
-        task_updater = TaskUpdater(event_queue, context.current_task.id if context.current_task else None, context.message.context_id if context.message else None)
-        
-        # Ensure a task exists and set running status
         task = context.current_task
         if not task:
             task = new_task(context.message)
             await event_queue.enqueue_event(task)
-            task_updater = TaskUpdater(event_queue, task.id, task.context_id)
-
-        await task_updater.update_status(
-            TaskState.working,
-            new_agent_text_message(
-                "Analyzing query and routing to appropriate agent...",
-                task.context_id,
-                task.id,
-            ),
-        )
+        
+        task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         
         try:
-            # Route the query
-            routing_result = await self._route_query(query)
-            logger.info(f"Routing to {routing_result['agent']}: {routing_result['reasoning']}")
+            await task_updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    "Analyzing query and routing to appropriate agent...",
+                    task.context_id,
+                    task.id,
+                ),
+            )
             
-            # Resolve agent card and create client per SDK samples
+            logger.info("Router: Determining which agent should handle the query...")
+            routing_result = await self._route_query(query)
+            logger.info(f"Router: Decision - route to agent '{routing_result['agent']}'. Reasoning: {routing_result['reasoning']}")
+            
             agent_url = routing_result["url"]
+            logger.info(f"Router: Connecting to specialist agent at {agent_url}")
             resolver = A2ACardResolver(self.http_client, agent_url)
             agent_card = await resolver.get_agent_card()
 
@@ -169,8 +171,11 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
             )
             client = ClientFactory(client_config).create(agent_card)
 
-            # Create message for target agent and stream results, remapping to this task
-            message = Message(role=Role.user, parts=[Part(root=TextPart(text=query))])
+            message = Message(
+                messageId=str(uuid.uuid4()),
+                role=Role.user, 
+                parts=[Part(root=TextPart(text=query))]
+            )
             produced_any = False
             completed = False
             async for event in client.send_message(message):
@@ -219,15 +224,15 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
                 await task_updater.complete()
             
         except Exception as e:
-            logger.error(f"Router execution failed: {e}")
-            await task_updater.update_task(
-                state=TaskState.failed,
-                message=f"Routing failed: {str(e)}"
+            logger.error(f"Router execution failed: {e}", exc_info=True)
+            await task_updater.update_status(
+                TaskState.failed,
+                new_agent_text_message(f"Routing failed: {str(e)}", task.context_id, task.id)
             )
     
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
-    ) -> Task | None:
+    ) -> None:
         """Handle task cancellation."""
         task_updater = TaskUpdater(
             event_queue,
@@ -235,11 +240,14 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
             context.message.context_id if context.message else None,
         )
         
-        await task_updater.update_task(
+        await task_updater.update_status(
             state=TaskState.cancelled,
             message="Query routing cancelled"
         )
-        
-        return context.task
     
     # Agent card is provided via JSON in server/agent_cards/router.json
+    async def get_agent_card(self) -> AgentCard:
+        """Return agent capabilities for A2A discovery."""
+        # This is now handled by the server loading the JSON file.
+        # This method is here to satisfy the abstract base class.
+        pass

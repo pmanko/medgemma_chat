@@ -6,8 +6,10 @@ Provides smart defaults for all settings to minimize configuration burden.
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from the appropriate file
+# Check if uvicorn specified a custom env file, otherwise use default .env
+env_file = os.getenv("UVICORN_ENV_FILE", ".env")
+load_dotenv(dotenv_path=env_file)
 
 # ==============================================================================
 # LLM Configuration
@@ -65,9 +67,14 @@ else:
 # ==============================================================================
 
 # Agent service URLs (defaults work for standard setup)
-A2A_ROUTER_URL = os.getenv("A2A_ROUTER_URL", "http://localhost:9100")
-A2A_MEDGEMMA_URL = os.getenv("A2A_MEDGEMMA_URL", "http://localhost:9101")
-A2A_CLINICAL_URL = os.getenv("A2A_CLINICAL_URL", "http://localhost:9102")
+AGENT_HOST_IP = os.getenv("AGENT_HOST_IP", "127.0.0.1")
+A2A_ROUTER_PORT = os.getenv("A2A_ROUTER_PORT", "9100")
+A2A_MEDGEMMA_PORT = os.getenv("A2A_MEDGEMMA_PORT", "9101")
+A2A_CLINICAL_PORT = os.getenv("A2A_CLINICAL_PORT", "9102")
+
+A2A_ROUTER_URL = f"http://{AGENT_HOST_IP}:{A2A_ROUTER_PORT}"
+A2A_MEDGEMMA_URL = f"http://{AGENT_HOST_IP}:{A2A_MEDGEMMA_PORT}"
+A2A_CLINICAL_URL = f"http://{AGENT_HOST_IP}:{A2A_CLINICAL_PORT}"
 
 # A2A is always enabled in SDK version
 ENABLE_A2A = True

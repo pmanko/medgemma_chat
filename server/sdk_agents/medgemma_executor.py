@@ -98,8 +98,7 @@ class MedGemmaExecutor(AgentExecutor):
             # Add the response as an artifact
             await updater.add_artifact(
                 [Part(root=TextPart(text=answer))],
-                name='medical_response',
-                description='Medical Q&A response'
+                name='medical_response'
             )
             
             # Complete the task
