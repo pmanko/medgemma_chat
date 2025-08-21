@@ -234,9 +234,9 @@ ssh -L 1234:localhost:1234 your-dev-machine
 
 ## Next Steps
 
-- [Configure other LLM providers](configuration.md) for comparison
-- [Set up FHIR integration](configuration.md#fhir-setup) for clinical data
-- [Deploy with Docker](../deployment/docker.md) for production
+- [Configure the system](configuration.md) for your environment
+- [Create new agents](../development/creating-agents.md) to extend functionality
+- Review the [Architecture Overview](../architecture/overview.md) for system design
 
 ## Resources
 

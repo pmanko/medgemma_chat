@@ -1,386 +1,126 @@
 # System Architecture Overview
 
-The Medical Multi-Agent Chat System implements the A2A (Agent-to-Agent) protocol to enable collaborative medical AI through specialized, interoperable agents.
+The Medical Multi-Agent Chat System implements the A2A (Agent-to-Agent) protocol using the A2A SDK v0.3.2+.
 
-## High-Level Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        User Interface                        │
-│                    (Web Browser / API Client)                │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ HTTP/HTTPS
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      FastAPI Bridge                          │
-│                  (Optional - for Web UI)                     │
-└───────────────────────┬─────────────────────────────────────┘
-                        │ A2A Protocol (JSON-RPC 2.0)
-                        ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Router Agent                            │
-│                 (Orchestration Service)                      │
-│                      Port: 9100                              │
-└──────────┬──────────────────────────────┬───────────────────┘
-           │                              │
-           ▼                              ▼
-┌──────────────────────┐      ┌──────────────────────────────┐
-│   MedGemma Agent     │      │  Clinical Research Agent     │
-│  (Medical Q&A)       │      │  (FHIR/SQL Queries)          │
-│   Port: 9101         │      │      Port: 9102              │
-└──────────┬───────────┘      └──────────┬───────────────────┘
-           │                              │
-           ▼                              ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    External Services                         │
-│         (LLM APIs, FHIR Servers, SQL Databases)              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│              Client/Browser                  │
+└────────────────┬────────────────────────────┘
+                 │ HTTP/JSON-RPC
+                 ▼
+┌─────────────────────────────────────────────┐
+│         Router Agent (:9100)                 │
+│         Orchestration & Routing              │
+└──────┬─────────────────────┬─────────────────┘
+       │                     │
+       ▼                     ▼
+┌──────────────┐      ┌──────────────────────┐
+│  MedGemma    │      │  Clinical Research   │
+│   (:9101)    │      │      (:9102)         │
+└──────┬───────┘      └──────────┬───────────┘
+       │                         │
+       └────────┬────────────────┘
+                ▼
+         ┌──────────────┐
+         │  LM Studio   │
+         │   (:1234)    │
+         └──────────────┘
 ```
 
 ## Core Components
 
-### 1. User Interface Layer
+### 1. Router Agent (Port 9100)
+- Analyzes queries using LLM
+- Routes to appropriate specialist
+- Returns aggregated responses
 
-The system provides multiple interfaces for interaction:
+### 2. MedGemma Agent (Port 9101)  
+- Answers medical questions
+- Provides evidence-based information
+- Includes medical disclaimers
 
-- **Web UI**: Browser-based chat interface using vanilla JavaScript
-- **API Access**: Direct HTTP/JSON-RPC calls to agents
-- **SDK Clients**: Python clients using the A2A SDK
-
-### 2. FastAPI Bridge (Optional)
-
-A lightweight translation layer that:
-- Converts web requests to A2A protocol
-- Manages conversation state
-- Provides backwards compatibility
-- Handles CORS and authentication
-
-### 3. Agent Services
-
-Three specialized microservices, each running as an independent A2A server:
-
-#### Router Agent (Port 9100)
-- **Role**: Orchestrator and request router
-- **Responsibilities**:
-  - Discovers available agents via A2A protocol
-  - Analyzes queries using LLM
-  - Routes to appropriate specialist
-  - Aggregates responses
-- **Skills**: `route_query`
-
-#### MedGemma Agent (Port 9101)
-- **Role**: Medical knowledge expert
-- **Responsibilities**:
-  - Answers general medical questions
-  - Provides evidence-based information
-  - Includes appropriate disclaimers
-- **Skills**: `answer_medical_question`
-
-#### Clinical Research Agent (Port 9102)
-- **Role**: Clinical data specialist
-- **Responsibilities**:
-  - Queries FHIR servers
-  - Executes SQL on clinical databases
-  - Synthesizes data into insights
-- **Skills**: `clinical_research`
-
-## A2A Server Architecture
-
-### Agent Server Components
-
-Each agent in the system runs as an independent A2A server with these components:
-
-1. **AgentExecutor**: The core business logic
-   - Inherits from `a2a.server.agent_execution.AgentExecutor`
-   - Implements `execute()` and optionally `cancel()` methods
-   - Handles the actual processing of requests
-
-2. **A2A Application**: The server wrapper
-   - Uses `A2AStarletteApplication` or `A2ARESTFastAPIApplication`
-   - Handles A2A protocol compliance
-   - Manages HTTP endpoints (including `/.well-known/agent.json`)
-
-3. **Request Handler**: Protocol message handling
-   - Uses `DefaultRequestHandler` from the SDK
-   - Routes JSON-RPC requests to the executor
-   - Manages task lifecycle
-
-4. **Task Store**: State management
-   - Uses `InMemoryTaskStore` for development
-   - Can be replaced with persistent storage for production
-
-### Server Implementation Pattern
-
-```python
-# agent_executor.py
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.types import Task
-
-class MyAgentExecutor(AgentExecutor):
-    async def execute(self, context: RequestContext, event_queue: EventQueue):
-        # Get user input from context
-        query = context.get_user_input()
-        
-        # Process the request and emit events
-        await event_queue.put(...)
-        
-    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> Task | None:
-        # Optional: handle task cancellation
-        return None
-        
-    async def get_agent_card(self):
-        # Return agent capabilities
-        return AgentCard(...)
-
-# agent_server.py
-from a2a.server.apps import A2ARESTFastAPIApplication
-from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryTaskStore
-
-def create_agent_server():
-    # Create executor and handler
-    executor = MyAgentExecutor()
-    handler = DefaultRequestHandler(
-        agent_executor=executor,
-        task_store=InMemoryTaskStore()
-    )
-    
-    # Get agent card and configure
-    agent_card = executor.get_agent_card()
-    agent_card.url = "http://localhost:9101/"
-    
-    # Create and return FastAPI app
-    server = A2ARESTFastAPIApplication(
-        agent_card=agent_card,
-        http_handler=handler
-    )
-    return server.build()
-
-# Run with uvicorn
-if __name__ == "__main__":
-    import uvicorn
-    app = create_agent_server()
-    uvicorn.run(app, host="0.0.0.0", port=9101)
-```
-
-### Comparison with Google ADK Demo
-
-The A2A demo app uses a hybrid approach:
-- **Host Agent**: Uses Google ADK (Agent Development Kit) for orchestration
-- **Remote Agents**: Use A2A protocol for interoperability
-
-Our implementation uses pure A2A:
-- **Router Agent**: A2A agent that orchestrates other agents
-- **Specialist Agents**: A2A agents for specific domains
-- **Advantage**: Full protocol compliance and no vendor lock-in
+### 3. Clinical Research Agent (Port 9102)
+- Handles clinical research questions
+- Provides statistical analysis insights
+- Optional FHIR data integration
 
 ## A2A Protocol Implementation
 
-### Protocol Standards
-
-The system fully implements the A2A protocol:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "skill_name",
-  "params": {
-    "query": "user question",
-    "additional": "parameters"
-  },
-  "id": 1
-}
-```
-
 ### Agent Discovery
+Each agent exposes capabilities at `/.well-known/agent-card.json`:
+- Name, description, version
+- Available skills and their descriptions
+- Transport preferences (JSON-RPC)
 
-Each agent exposes its capabilities via an agent card:
-
-```json
-{
-  "name": "Agent Name",
-  "description": "What this agent does",
-  "version": "1.0.0",
-  "skills": [
-    {
-      "name": "skill_name",
-      "description": "What this skill does",
-      "input_schema": { ... },
-      "output_schema": { ... }
-    }
-  ]
-}
-```
+### Task Management
+The SDK handles task lifecycle:
+1. Create task from incoming message
+2. Update status (working/completed/failed)
+3. Add response artifacts
+4. Stream updates via SSE
 
 ### Message Flow
-
-1. **Discovery Phase**:
-   - Router queries each agent's `/.well-known/agent.json`
-   - Builds catalog of available skills
-
-2. **Routing Phase**:
-   - User query arrives at router
-   - LLM analyzes query and available skills
-   - Selects best agent and skill
-
-3. **Execution Phase**:
-   - Router invokes selected skill via JSON-RPC
-   - Agent processes request
-   - Returns structured response
-
-4. **Response Phase**:
-   - Router receives agent response
-   - Optionally aggregates multiple responses
-   - Returns to user
-
-## Technology Stack
-
-### Core Technologies
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Language** | Python 3.10+ | Primary development language |
-| **A2A SDK** | a2a-sdk 0.3.0+ | Protocol implementation |
-| **Web Framework** | FastAPI | API bridge layer |
-| **Async Runtime** | asyncio/uvicorn | Concurrent request handling |
-| **HTTP Client** | httpx | Agent communication |
-| **Validation** | Pydantic 2.0 | Type safety and validation |
-
-### External Integrations
-
-| Service | Purpose | Protocol |
-|---------|---------|----------|
-| **LM Studio** | Local LLM hosting | OpenAI API |
-| **OpenAI** | Cloud LLM | REST API |
-| **Google Gemini** | Advanced LLM | REST API |
-| **OpenMRS** | FHIR server | FHIR R4 |
-| **Spark Thrift** | SQL-on-FHIR | HiveServer2 |
-
-## Design Principles
-
-### 1. Microservices Architecture
-- Each agent is independently deployable
-- Services communicate via standard protocols
-- No shared state between agents
-
-### 2. Protocol-First Design
-- Strict adherence to A2A specification
-- JSON-RPC 2.0 for all agent communication
-- Self-describing via agent cards
-
-### 3. Async-First Implementation
-- Non-blocking I/O throughout
-- Concurrent request handling
-- Efficient resource utilization
-
-### 4. Type Safety
-- Pydantic models for all data structures
-- Runtime validation of inputs/outputs
-- Clear error messages
-
-### 5. Extensibility
-- Easy to add new agents
-- Skills can be added to existing agents
-- Protocol allows for custom extensions
-
-## Scalability Considerations
-
-### Horizontal Scaling
-- Agents can be replicated
-- Load balancing via standard tools
-- Stateless design enables scaling
-
-### Performance Optimization
-- Connection pooling for HTTP clients
-- Response caching where appropriate
-- Async processing for I/O operations
-
-### Resource Management
-- Configurable timeouts
-- Memory limits per agent
-- Graceful degradation
-
-## Security Architecture
-
-### Authentication & Authorization
-- Optional API key authentication
-- JWT support for user sessions
-- Per-skill access control
-
-### Data Protection
-- TLS for agent communication
-- Credential encryption
-- Audit logging
-
-### Medical Data Compliance
-- FHIR standard compliance
-- Scope-based access control
-- Patient data anonymization options
-
-## Deployment Patterns
-
-### Development
 ```
-All agents on localhost
-Direct LLM connections
-Mock FHIR data
+Client → Router: JSON-RPC request
+Router → LLM: Analyze query
+Router → Agent: Forward to specialist
+Agent → Router: Return artifacts
+Router → Client: Final response
 ```
 
-### Staging
+## Implementation Pattern
+
+Each agent consists of:
+
+1. **Executor** (`server/sdk_agents/*_executor.py`)
+   - Inherits from `AgentExecutor`
+   - Implements `execute()` method
+   - Uses `TaskUpdater` for state management
+
+2. **Server** (`server/sdk_agents/*_server.py`)
+   - Creates `A2AStarletteApplication`
+   - Loads agent card from JSON
+   - Configures request handler
+
+3. **Agent Card** (`server/agent_cards/*.json`)
+   - Defines capabilities
+   - Lists available skills
+
+Example structure:
+```python
+# Executor
+class MyExecutor(AgentExecutor):
+    async def execute(self, context, event_queue):
+        query = context.get_user_input()
+        # Process with LLM
+        # Update task status
+        # Add artifacts
+        # Complete task
+
+# Server  
+def create_server():
+    executor = MyExecutor()
+    handler = DefaultRequestHandler(executor, InMemoryTaskStore())
+    server = A2AStarletteApplication(agent_card, handler)
+    return server.build()
 ```
-Docker Compose deployment
-Shared LLM server
-Test FHIR server
-```
 
-### Production
-```
-Kubernetes orchestration
-Load-balanced agents
-Production FHIR/databases
-Monitoring and alerting
-```
+## Configuration
 
-## Error Handling
+Environment variables control the system:
+- `AGENT_HOST_IP`: Network IP for agents
+- `LLM_BASE_URL`: LM Studio endpoint
+- Model assignments per agent
+- Port configurations
 
-### Graceful Degradation
-- Fallback to alternative agents
-- Cached responses for common queries
-- Clear error messages to users
+See [Configuration Guide](../getting-started/configuration.md) for details.
 
-### Retry Logic
-- Configurable retry attempts
-- Exponential backoff
-- Circuit breaker pattern
+## Key Design Decisions
 
-### Logging & Monitoring
-- Structured logging (JSON)
-- Distributed tracing support
-- Prometheus metrics
-
-## Future Architecture Enhancements
-
-### Planned Improvements
-1. **Vector Database Integration**: For RAG capabilities
-2. **Event Streaming**: Kafka/RabbitMQ for async processing
-3. **Multi-Region Deployment**: Geographic distribution
-4. **Agent Marketplace**: Dynamic agent discovery and loading
-
-### Extensibility Points
-- Custom skill plugins
-- Alternative LLM providers
-- Additional data sources
-- New agent types
-
-## Summary
-
-The architecture provides:
-- ✅ **Standards-based** communication via A2A protocol
-- ✅ **Modular design** with specialized agents
-- ✅ **Scalable deployment** options
-- ✅ **Extensible framework** for new capabilities
-- ✅ **Production-ready** error handling and monitoring
-
-This design ensures the system can grow from a local development setup to a production-scale medical AI platform while maintaining code quality and operational excellence.
-
+- **Pure A2A SDK**: No vendor dependencies
+- **JSON Agent Cards**: Transparent capability definition
+- **LLM Routing**: Intelligent query routing
+- **Centralized Config**: Single source of truth
+- **Process Management**: Honcho for development
