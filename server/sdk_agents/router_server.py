@@ -11,7 +11,7 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, TransportProtocol, AgentCard
-from .router_executor import RouterAgentExecutor
+from .dispatch_executor import DispatchingExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def create_router_server():
     """
     Creates and returns the FastAPI application for the Router agent.
     """
-    agent_executor = RouterAgentExecutor()
+    agent_executor = DispatchingExecutor()
     request_handler = DefaultRequestHandler(
         agent_executor=agent_executor,
         task_store=InMemoryTaskStore()

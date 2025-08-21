@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     scope: Optional[str] = Field(default="hie", description="facility | hie")
     facility_id: Optional[str] = None
     org_ids: Optional[List[str]] = None
+    orchestrator_mode: Optional[str] = Field(default="simple", description="simple | react")
 
 
 class ChatResponse(BaseModel):

@@ -47,10 +47,23 @@
           body: JSON.stringify({ prompt: thisPrompt, conversation_id: `conv_${Date.now()}` })
         });
       } else {
+        // Build conversation history from messages, excluding system messages
+        const conversationHistory = messages
+          .filter(m => m.sender !== 'system')
+          .map(m => ({
+            role: m.sender === 'user' ? 'user' : 'assistant',
+            content: m.text
+          }));
+        
         res = await fetch(`${SERVER_URL}/generate/${selectedModel}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: thisPrompt, system_prompt: currentSystemPrompt(), conversation_history: [] })
+          body: JSON.stringify({ 
+            prompt: thisPrompt, 
+            system_prompt: currentSystemPrompt(), 
+            conversation_history: conversationHistory,
+            max_new_tokens: 2000
+          })
         });
       }
       const data = await res.json();

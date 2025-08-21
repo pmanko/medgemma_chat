@@ -11,11 +11,7 @@ from pydantic import BaseModel, Field
 
 from .config import agent_config, llm_config, a2a_endpoints
 from .llm_clients import llm_client
-from .a2a_layer import bus, registry, new_message
 from .schemas import ChatRequest, ChatResponse
-from .agents.user_proxy_agent import run_user_proxy_agent
-from .agents.medgemma_agent import run_medgemma_agent
-from .agents.fhir_agent import run_clinical_research_agent
 
 import requests
 
@@ -57,28 +53,6 @@ class PromptResponse(BaseModel):
     response: str
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        if agent_config.enable_a2a:
-            logger.info("Starting A2A simulation layer and agents...")
-            bus.register_mailbox("web_ui")
-            run_medgemma_agent()
-            run_clinical_research_agent()
-            run_user_proxy_agent()
-            logger.info("Agents started")
-        else:
-            logger.info("A2A layer disabled by config")
-    except Exception as e:
-        logger.error(f"Failed to start agents: {e}")
-        raise
-
-    yield
-
-
-app.router.lifespan_context = lifespan
-
-
 @app.get("/")
 def read_root():
     return {
@@ -95,7 +69,14 @@ def read_root():
 
 @app.get("/manifest")
 def get_manifest():
-    return {"agents": registry.list_agents()}
+    # In a native A2A architecture, the manifest is decentralized.
+    # Each agent provides its own card. This endpoint could be
+    # enhanced to query each agent and aggregate the results.
+    return {
+        "router_agent": a2a_endpoints.router_url,
+        "medgemma_agent": a2a_endpoints.medgemma_url,
+        "clinical_agent": a2a_endpoints.clinical_url
+    }
 
 
 @app.get("/health")
@@ -117,14 +98,42 @@ def generate_orchestrator(request: PromptRequest):
         messages = []
         if request.system_prompt:
             messages.append({"role": "system", "content": request.system_prompt})
-        for m in request.conversation_history[-16:]:
-            messages.append({"role": m.role if m.role in ("user", "assistant", "system") else "user", "content": m.content})
+        
+        # Handle conversation history - keep last 10 exchanges (20 messages)
+        history = request.conversation_history[-20:] if request.conversation_history else []
+        
+        # If history is too long, summarize older messages
+        if len(request.conversation_history) > 20:
+            # Create a summary of older messages
+            summary_prompt = "Summarize the key points from this conversation so far in 2-3 sentences:\n"
+            for m in request.conversation_history[:-20]:
+                summary_prompt += f"{m.role}: {m.content[:200]}...\n" if len(m.content) > 200 else f"{m.role}: {m.content}\n"
+            
+            summary = llm_client.generate_chat(
+                model=llm_config.orchestrator_model,
+                messages=[{"role": "user", "content": summary_prompt}],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            messages.append({"role": "system", "content": f"Previous conversation summary: {summary}"})
+        
+        # Add recent history
+        for m in history:
+            role = m.role if m.role in ("user", "assistant", "system") else "user"
+            # Map 'assistant' to 'assistant' for the LLM API
+            if role == "assistant":
+                messages.append({"role": "assistant", "content": m.content})
+            else:
+                messages.append({"role": role, "content": m.content})
+        
+        # Add current prompt
         messages.append({"role": "user", "content": request.prompt})
+        
         text = llm_client.generate_chat(
             model=llm_config.orchestrator_model,
             messages=messages,
             temperature=llm_config.temperature,
-            max_tokens=min(request.max_new_tokens, 1024),
+            max_tokens=min(request.max_new_tokens, 2000),
         )
         return {"response": text}
     except Exception as e:
@@ -145,14 +154,41 @@ def generate_medical(request: PromptRequest):
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        for m in request.conversation_history[-16:]:
-            messages.append({"role": m.role if m.role in ("user", "assistant", "system") else "user", "content": m.content})
+        
+        # Handle conversation history - keep last 10 exchanges for medical context
+        history = request.conversation_history[-20:] if request.conversation_history else []
+        
+        # If history is too long, summarize medical context
+        if len(request.conversation_history) > 20:
+            # Create a medical-focused summary
+            summary_prompt = "Summarize the key medical topics and patient information discussed so far in 2-3 sentences:\n"
+            for m in request.conversation_history[:-20]:
+                summary_prompt += f"{m.role}: {m.content[:200]}...\n" if len(m.content) > 200 else f"{m.role}: {m.content}\n"
+            
+            summary = llm_client.generate_chat(
+                model=llm_config.med_model,
+                messages=[{"role": "user", "content": summary_prompt}],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            messages.append({"role": "system", "content": f"Previous medical discussion summary: {summary}"})
+        
+        # Add recent history
+        for m in history:
+            role = m.role if m.role in ("user", "assistant", "system") else "user"
+            if role == "assistant":
+                messages.append({"role": "assistant", "content": m.content})
+            else:
+                messages.append({"role": role, "content": m.content})
+        
+        # Add current prompt
         messages.append({"role": "user", "content": request.prompt})
+        
         text = llm_client.generate_chat(
             model=llm_config.med_model,
             messages=messages,
             temperature=0.1,
-            max_tokens=min(request.max_new_tokens, 800),
+            max_tokens=min(request.max_new_tokens, 1500),
         )
         return {"response": text}
     except Exception as e:
@@ -173,14 +209,41 @@ def generate_clinical(request: PromptRequest):
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
-        for m in request.conversation_history[-16:]:
-            messages.append({"role": m.role if m.role in ("user", "assistant", "system") else "user", "content": m.content})
+        
+        # Handle conversation history - keep last 10 exchanges for clinical context
+        history = request.conversation_history[-20:] if request.conversation_history else []
+        
+        # If history is too long, summarize clinical research context
+        if len(request.conversation_history) > 20:
+            # Create a clinical research-focused summary
+            summary_prompt = "Summarize the key clinical research topics, data points, and findings discussed so far in 2-3 sentences:\n"
+            for m in request.conversation_history[:-20]:
+                summary_prompt += f"{m.role}: {m.content[:200]}...\n" if len(m.content) > 200 else f"{m.role}: {m.content}\n"
+            
+            summary = llm_client.generate_chat(
+                model=llm_config.clinical_research_model,
+                messages=[{"role": "user", "content": summary_prompt}],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            messages.append({"role": "system", "content": f"Previous clinical research discussion summary: {summary}"})
+        
+        # Add recent history
+        for m in history:
+            role = m.role if m.role in ("user", "assistant", "system") else "user"
+            if role == "assistant":
+                messages.append({"role": "assistant", "content": m.content})
+            else:
+                messages.append({"role": role, "content": m.content})
+        
+        # Add current prompt
         messages.append({"role": "user", "content": request.prompt})
+        
         text = llm_client.generate_chat(
             model=llm_config.clinical_research_model,
             messages=messages,
             temperature=0.2,
-            max_tokens=min(request.max_new_tokens, 1000),
+            max_tokens=min(request.max_new_tokens, 2000),
         )
         return {"response": text}
     except Exception as e:
@@ -195,82 +258,73 @@ def generate_clinical(request: PromptRequest):
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     if not agent_config.enable_a2a:
-        raise HTTPException(status_code=503, detail="A2A layer disabled")
+        raise HTTPException(status_code=503, detail="A2A layer is disabled in the configuration.")
 
-    if agent_config.enable_a2a_native:
-        if not a2a_endpoints.router_url:
-            raise HTTPException(status_code=500, detail="A2A router URL is not configured")
-        try:
-            # Native A2A: forward to router's A2A endpoint
-            # Expect router to expose an A2A-compatible HTTP endpoint accepting message-like payload
-            resp = requests.post(
-                a2a_endpoints.router_url.rstrip("/") + "/",
-                json={
-                    "sender_id": "web_ui",
-                    "payload": {
-                        "query": request.prompt,
+    if not a2a_endpoints.router_url:
+        raise HTTPException(status_code=500, detail="A2A router URL is not configured.")
+    
+    try:
+        # This is the native A2A path. The web server acts as a client
+        # to the independently running router agent.
+        
+        # The A2A SDK's router_executor expects a full message object,
+        # not just a payload. We construct one here.
+        a2a_message = {
+            "jsonrpc": "2.0",
+            "method": "send_message",
+            "params": {
+                "message": {
+                    "message_id": str(uuid.uuid4()),
+                    "role": "user",
+                    "parts": [
+                        {
+                            "type": "text",
+                            "text": request.prompt,
+                        }
+                    ],
+                    "metadata": {
                         "conversation_id": request.conversation_id,
                         "scope": request.scope,
                         "facility_id": request.facility_id,
                         "org_ids": request.org_ids,
+                        "orchestrator_mode": request.orchestrator_mode,
                     },
-                },
-                timeout=agent_config.chat_timeout_seconds,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            # Normalize expected response structure
-            text = (
-                data.get("result", {}).get("content", {}).get("text")
-                or data.get("result", {}).get("parts", [{}])[0].get("text")
-                or data.get("result", {}).get("text")
-                or data.get("result", {}).get("message", "")
-                or data.get("response", "")
-                or "(No content)"
-            )
-            return ChatResponse(response=text, correlation_id="native")
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    # Simulated A2A path below
-    correlation_id = str(uuid.uuid4())
-    try:
-        bus.register_mailbox("web_ui")
-        msg = new_message(
-            sender_id="web_ui",
-            receiver_id="user_proxy_agent",
-            task_name="initiate_query",
-            payload={
-                "query": request.prompt,
-                "conversation_id": request.conversation_id,
-                "scope": request.scope,
-                "facility_id": request.facility_id,
-                "org_ids": request.org_ids,
+                }
             },
-            correlation_id=correlation_id,
+            "id": str(uuid.uuid4()),
+        }
+
+        resp = requests.post(
+            a2a_endpoints.router_url.rstrip("/") + "/",
+            json=a2a_message,
+            timeout=agent_config.chat_timeout_seconds,
         )
-        bus.post_message(msg)
+        resp.raise_for_status()
+        data = resp.json()
 
-        def match(m):
-            return m.get("correlation_id") == correlation_id and m.get("receiver_id") == "web_ui"
+        # Extract the final text response from the A2A task structure
+        final_text = "(No content was returned from the agent network)"
+        task_result = data.get("result", {})
+        
+        # The result from an SDK agent is a Task object. We need to parse it.
+        artifacts = task_result.get("artifacts", [])
+        if artifacts:
+            # The final answer is usually in the last artifact
+            last_artifact = artifacts[-1]
+            parts = last_artifact.get("parts", [])
+            if parts:
+                text_part = parts[0].get("root", {})
+                if text_part.get("kind") == "text":
+                    final_text = text_part.get("text", final_text)
 
-        reply = bus.get_message("web_ui", timeout=agent_config.chat_timeout_seconds, predicate=match)
-        if reply is None:
-            raise HTTPException(status_code=504, detail="Timeout waiting for agent response")
-        if reply.get("status") == "error":
-            detail = reply.get("payload", {}).get("error", "Unknown agent error")
-            raise HTTPException(status_code=500, detail=detail)
-
-        payload = reply.get("payload", {})
-        text = (
-            payload.get("data", {}).get("answer")
-            or payload.get("summary")
-            or payload.get("text")
-            or "(No content)"
+        return ChatResponse(
+            response=final_text, 
+            correlation_id=task_result.get("id", "native")
         )
-        return ChatResponse(response=text, correlation_id=correlation_id)
-    except HTTPException:
-        raise
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"A2A router connection error: {e}")
+        raise HTTPException(status_code=503, detail=f"Could not connect to the A2A Router Agent at {a2a_endpoints.router_url}.")
     except Exception as e:
-        logger.error(f"/chat error: {e}")
+        logger.error(f"/chat endpoint error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

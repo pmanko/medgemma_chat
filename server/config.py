@@ -27,7 +27,7 @@ GENERAL_MODEL = ORCHESTRATOR_MODEL
 
 # LLM parameters (smart defaults, not exposed in env.example)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2000"))  # Increased default for longer responses
 
 # Create a config object for cleaner imports
 class LLMConfig:
@@ -155,6 +155,7 @@ class OrchestatorConfig:
     provider = ORCHESTRATOR_PROVIDER
     model = ORCHESTRATOR_MODEL
     gemini_api_key = GEMINI_API_KEY
+    mode = os.getenv("ORCHESTRATOR_MODE", "simple")  # "simple" or "react"
 
 class OpenMRSConfig:
     fhir_base_url = OPENMRS_FHIR_BASE_URL
@@ -208,6 +209,7 @@ def validate_config():
     print(f"  - Medical Model: {MED_MODEL}")
     print(f"  - Clinical Research Model: {CLINICAL_RESEARCH_MODEL}")
     print(f"  - Orchestrator Provider: {ORCHESTRATOR_PROVIDER}")
+    print(f"  - Orchestrator Mode: {orchestrator_config.mode}")
     if OPENMRS_FHIR_BASE_URL:
         print(f"  - FHIR: Connected to {OPENMRS_FHIR_BASE_URL}")
     if FHIR_PARQUET_DIR:
