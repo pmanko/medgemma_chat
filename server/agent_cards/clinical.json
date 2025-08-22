@@ -5,13 +5,32 @@
   "version": "1.0.0",
   "preferredTransport": "jsonrpc",
   "capabilities": {
-    "streaming": false,
+    "streaming": true,
     "pushNotifications": false,
     "stateTransitionHistory": false
   },
   "defaultInputModes": ["text", "text/plain"],
   "defaultOutputModes": ["text", "text/plain"],
   "skills": [
+    {
+      "id": "general_knowledge",
+      "name": "general_knowledge",
+      "description": "Answers general knowledge questions and provides information on a wide variety of topics.",
+      "tags": ["general", "q&a"],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string", "description": "The general knowledge question to be answered." }
+        },
+        "required": ["query"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "response": { "type": "string", "description": "The answer to the question." }
+        }
+      }
+    },
     {
       "id": "answer_clinical_question",
       "name": "Answer Clinical Questions",

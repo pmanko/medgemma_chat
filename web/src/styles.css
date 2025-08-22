@@ -35,6 +35,19 @@ html, body { background: var(--app-bg); color: var(--app-text); }
 .model-message { align-self: flex-start; }
 .model-message .message-content { background: lightblue; color: var(--app-text); border: none; border-bottom-left-radius: .25rem; }
 
+.model-message-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 80%;
+}
+
+.agent-label {
+  margin: 0 0 0.25rem 1rem;
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+}
+
 .chat-form { position: fixed; bottom: 40px; left: 0; right: 0; margin: 0; padding: 1rem; background: var(--app-bg); border-top: 1px solid var(--app-border); box-shadow: 0 -2px 10px rgba(0,0,0,.1); z-index: 1000; }
 .chat-form .form-content { max-width: 1200px; margin: 0 auto; padding: 0 .5rem; }
 /* Let Pico handle fieldset role=group to attach input and buttons */

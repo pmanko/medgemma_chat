@@ -10,7 +10,7 @@
   console.log('SERVER_URL configured as:', SERVER_URL);
 
   import { marked } from 'marked';
-  type ChatMsg = { sender: 'user' | 'model' | 'system'; text: string; html?: string };
+  type ChatMsg = { sender: 'user' | 'model' | 'system'; text: string; html?: string; agent?: string; };
   let messages: ChatMsg[] = [
     { sender: 'system', text: '👋 Welcome! A2A is the default. Ask a question to get started.' }
   ];
@@ -69,7 +69,8 @@
       const data = await res.json();
       const text = data.response || JSON.stringify(data);
       const html = marked.parse(text ?? '');
-      messages = [...messages, { sender: 'model', text, html }];
+      const respondingAgent = data.responding_agent;
+      messages = [...messages, { sender: 'model', text, html, agent: respondingAgent }];
     } catch (e: any) {
       const err = `Error: ${e?.message || e}`;
       messages = [...messages, { sender: 'model', text: err, html: marked.parse(err) }];
@@ -144,9 +145,14 @@
       {#if m.sender === 'user'}
         <article class="message user-message"><div class="message-content">{m.text}</div></article>
       {:else if m.sender === 'model'}
-        <article class="message model-message">
-          <div class="message-content">{@html m.html ?? m.text}</div>
-        </article>
+        <div class="model-message-container">
+          {#if m.agent}
+            <small class="agent-label">Answer from: {m.agent}</small>
+          {/if}
+          <article class="message model-message">
+            <div class="message-content">{@html m.html ?? m.text}</div>
+          </article>
+        </div>
       {:else}
         <article class="message-welcome"><p>{m.text}</p></article>
       {/if}

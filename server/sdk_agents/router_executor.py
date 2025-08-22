@@ -43,21 +43,40 @@ class RouterAgentExecutor(AgentExecutor):
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0.3"))
         self.http_client = httpx.AsyncClient(timeout=180.0)
         
-        # Agent registry - in production this would be dynamic
-        self.agents = {
-            "medgemma": {
-                "url": "http://localhost:9101",
-                "name": "MedGemma Medical Assistant",
-                "skills": ["answer_medical_question"]
-            },
-            "clinical": {
-                "url": "http://localhost:9102", 
-                "name": "Clinical Research Agent",
-                "skills": ["clinical_research"]
-            }
-        }
+        # Agent registry - dynamically discover agents and their skills
+        self.agents = self._discover_agents()
         
         logger.info(f"Router agent executor initialized with model: {self.orchestrator_model}")
+        logger.info(f"Discovered agents: {json.dumps(self.agents, indent=2)}")
+    
+    def _discover_agents(self) -> Dict[str, Any]:
+        """Synchronously discover agents and their skills from their cards."""
+        import requests # Use synchronous requests for startup discovery
+        
+        agent_base_urls = {
+            "medgemma": os.getenv("A2A_MEDGEMMA_URL", "http://localhost:9101"),
+            "clinical": os.getenv("A2A_CLINICAL_URL", "http://localhost:9102"),
+        }
+        
+        discovered_agents = {}
+        for name, url in agent_base_urls.items():
+            try:
+                card_url = f"{url.rstrip('/')}/.well-known/agent-card.json"
+                logger.info(f"Discovering agent '{name}' from {card_url}")
+                response = requests.get(card_url, timeout=5)
+                response.raise_for_status()
+                card = response.json()
+                
+                discovered_agents[name] = {
+                    "url": url,
+                    "name": card.get("name", f"{name} Agent"),
+                    "skills": [skill.get("id", skill.get("name")) for skill in card.get("skills", [])],
+                }
+            except requests.RequestException as e:
+                logger.error(f"Failed to discover agent '{name}' at {url}: {e}")
+                # Add a placeholder so the system can still run
+                discovered_agents[name] = { "url": url, "name": f"{name.capitalize()} Agent (Unavailable)", "skills": [] }
+        return discovered_agents
     
     async def _call_llm(self, messages: list[Dict[str, Any]]) -> str:
         """Call the LLM for routing decisions."""

@@ -60,74 +60,59 @@ class ClinicalExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         
         try:
-            logger.info(f"[Task {task.id}] Processing clinical query: '{query[:80]}...'")
-            # Update status to working
+            # First, determine which skill to use based on the query.
+            # This is a mini-routing step within the agent itself.
+            skill_choice_prompt = f"""You are a multi-skilled agent. Determine which of your skills is most appropriate for the user's query.
+            Available skills:
+            - general_knowledge: For answering general, non-medical, non-clinical questions.
+            - clinical_research: For answering questions related to clinical trials, research, and data analysis.
+            
+            User query: "{query}"
+            
+            Respond with JSON: {{"skill": "skill_name"}}
+            """
+            
+            skill_messages = [{"role": "system", "content": "You are a helpful assistant that chooses the best skill for a query."}, {"role": "user", "content": skill_choice_prompt}]
+            skill_response_raw = await self._call_llm(skill_messages, max_tokens=50) # Short response needed
+            
+            # Clean the response to handle potential markdown code blocks
+            cleaned_response = skill_response_raw.strip().removeprefix("```json").removesuffix("```").strip()
+            skill_choice = json.loads(cleaned_response).get("skill", "general_knowledge")
+
+            logger.info(f"[Task {task.id}] Determined skill for query '{query[:30]}...': {skill_choice}")
+
+            if skill_choice == "clinical_research":
+                system_prompt = self._get_clinical_research_prompt()
+                artifact_name = "clinical_analysis"
+                status_message = "Analyzing clinical research question..."
+            else: # Default to general knowledge
+                system_prompt = self._get_general_knowledge_prompt()
+                artifact_name = "general_knowledge_response"
+                status_message = "Answering general knowledge question..."
+
             await updater.update_status(
                 TaskState.working,
-                new_agent_text_message("Analyzing clinical research question...", task.context_id, task.id)
+                new_agent_text_message(status_message, task.context_id, task.id)
             )
             
-            # Prepare system prompt
-            system_prompt = """You are a Clinical Research Assistant specializing in evidence-based medicine and clinical data analysis.
-            
-            Your expertise includes:
-            1. Clinical trial design and methodology
-            2. Epidemiological research
-            3. Patient data analysis and statistics
-            4. Medical literature review
-            5. Clinical guidelines and protocols
-            
-            Important guidelines:
-            1. Cite relevant studies when possible
-            2. Explain statistical concepts clearly
-            3. Discuss limitations of research findings
-            4. Maintain patient privacy and HIPAA compliance
-            5. Provide evidence-based recommendations"""
-            
-            # Add context about available data sources if configured
-            if self.fhir_base_url:
-                system_prompt += "\n\nNote: You have access to clinical data from a FHIR server, though direct queries are not implemented in this demo."
-            
-            # Call LLM
-            headers = {"Content-Type": "application/json"}
-            if self.llm_api_key:
-                headers["Authorization"] = f"Bearer {self.llm_api_key}"
-            
-            request_data = {
-                "model": self.general_model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
-                ],
-                "temperature": self.temperature,
-                "max_tokens": 1500
-            }
-            
-            response = await self.http_client.post(
-                f"{self.llm_base_url}/v1/chat/completions",
-                headers=headers,
-                json=request_data
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            answer = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            # Call LLM with the chosen persona
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ]
+            answer = await self._call_llm(messages)
             
             if not answer:
                 answer = "I apologize, but I couldn't generate a response. Please try rephrasing your question."
             
-            # Add research disclaimer if not present
-            if "research" not in answer.lower() and "study" not in answer.lower():
-                answer += "\n\n**Note:** This analysis is based on general clinical research principles. For specific patient care decisions, always consult current clinical guidelines and patient-specific factors."
-            
-            # Add the response as an artifact
+            # Add the response as an artifact with the correct name
             await updater.add_artifact(
                 [Part(root=TextPart(text=answer))],
-                name='clinical_analysis'
+                name=artifact_name
             )
             
             # Complete the task
-            logger.info(f"[Task {task.id}] Task completed successfully.")
+            logger.info(f"[Task {task.id}] Task completed successfully using skill: {skill_choice}.")
             await updater.complete()
             
         except httpx.HTTPStatusError as e:
@@ -146,6 +131,55 @@ class ClinicalExecutor(AgentExecutor):
                 new_agent_text_message(error_msg, task.context_id, task.id)
             )
     
+    async def _call_llm(self, messages: list, max_tokens: int = 1500) -> str:
+        """Helper to call the LLM."""
+        headers = {"Content-Type": "application/json"}
+        if self.llm_api_key:
+            headers["Authorization"] = f"Bearer {self.llm_api_key}"
+        
+        request_data = {
+            "model": self.general_model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": max_tokens,
+        }
+        
+        response = await self.http_client.post(
+            f"{self.llm_base_url}/v1/chat/completions",
+            headers=headers,
+            json=request_data
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        return result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+    def _get_general_knowledge_prompt(self) -> str:
+        """Returns the system prompt for general queries."""
+        return "You are a helpful general-purpose assistant. Provide clear and concise answers to user questions."
+
+    def _get_clinical_research_prompt(self) -> str:
+        """Returns the system prompt for the clinical research persona."""
+        prompt = """You are a Clinical Research Assistant specializing in evidence-based medicine and clinical data analysis.
+            
+            Your expertise includes:
+            1. Clinical trial design and methodology
+            2. Epidemiological research
+            3. Patient data analysis and statistics
+            4. Medical literature review
+            5. Clinical guidelines and protocols
+            
+            Important guidelines:
+            1. Cite relevant studies when possible
+            2. Explain statistical concepts clearly
+            3. Discuss limitations of research findings
+            4. Maintain patient privacy and HIPAA compliance
+            5. Provide evidence-based recommendations"""
+        
+        if self.fhir_base_url:
+            prompt += "\n\nNote: You have access to clinical data from a FHIR server, though direct queries are not implemented in this demo."
+        return prompt
+
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
     ) -> Task | None:
@@ -170,6 +204,21 @@ class ClinicalExecutor(AgentExecutor):
             default_output_modes=["text", "text/plain"],
             capabilities=AgentCapabilities(streaming=True),
             skills=[
+                AgentSkill(
+                    id="general_knowledge",
+                    name="general_knowledge",
+                    description="Answers general knowledge questions and provides information on a wide variety of topics.",
+                    tags=["general", "q&a"],
+                    input_schema={
+                        "type": "object",
+                        "properties": { "query": { "type": "string", "description": "The general knowledge question to be answered." }},
+                        "required": ["query"],
+                    },
+                    output_schema={
+                        "type": "object",
+                        "properties": { "response": { "type": "string", "description": "The answer to the question." }},
+                    },
+                ),
                 AgentSkill(
                     id="clinical_research",
                     name="clinical_research",

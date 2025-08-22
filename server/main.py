@@ -305,6 +305,7 @@ def chat(request: ChatRequest):
         
         # Extract the final text response from the A2A task structure
         final_text = "(No content was returned from the agent network)"
+        responding_agent_name: Optional[str] = None
         task_result = data.get("result", {})
         
         # The result from an SDK agent is a Task object. We need to parse it.
@@ -313,6 +314,16 @@ def chat(request: ChatRequest):
             artifacts = task_result.get("artifacts", [])
             if artifacts:
                 last_artifact = artifacts[-1]
+                
+                # Determine agent name from the artifact's name
+                artifact_name = last_artifact.get("name")
+                if artifact_name == "medical_response":
+                    responding_agent_name = "MedGemma Agent"
+                elif artifact_name in ("clinical_analysis", "general_knowledge_response"):
+                    responding_agent_name = "Clinical Research Agent"
+                elif artifact_name == "router_summary":
+                    responding_agent_name = "Router Agent"
+                
                 parts = last_artifact.get("parts", [])
                 if parts:
                     text_part = parts[0]
@@ -321,7 +332,8 @@ def chat(request: ChatRequest):
 
         return ChatResponse(
             response=final_text, 
-            correlation_id=task_result.get("id", "native") if task_result else "native"
+            correlation_id=task_result.get("id", "native") if task_result else "native",
+            responding_agent=responding_agent_name,
         )
 
     except requests.exceptions.RequestException as e:

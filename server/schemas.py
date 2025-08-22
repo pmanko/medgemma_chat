@@ -24,4 +24,5 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    correlation_id: str 
+    correlation_id: str
+    responding_agent: Optional[str] = None 
