@@ -56,3 +56,5 @@ docker-compose*.yml
 
 # Client files excluded for server builds only
 # client/ - commented out to allow client Dockerfile to access it
+
+node_modules/

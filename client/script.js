@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // Configuration - can be easily modified for different environments
     // Use relative URLs so nginx can proxy properly
-    const SERVER_URL = '';  // Empty string means use same origin (nginx will proxy)
+    const SERVER_URL = 'http://10.0.0.196:1234';  // Empty string means use same origin (nginx will proxy)
     const MAX_RETRIES = 3;
     const RETRY_DELAY = 1000; // milliseconds
     const REQUEST_TIMEOUT = 120000; // 2 minutes timeout for model generation
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedModel = 'general';
     let selectedSystemPrompt = 'default';
     let customSystemPrompt = '';
-    let mode = 'direct'; // 'direct' | 'agents'
+    let mode = 'agents'; // default to Agents (A2A)
     
     // Conversation history management
     let conversationHistory = [];
@@ -341,6 +341,10 @@ Focus on being helpful while maintaining accuracy and professionalism.`;
     });
 
     populateSystemPrompts();
+    // Default UI to Agents (A2A)
+    tabModeSpan.textContent = '🕸️ Agents (A2A)';
+    directControls.style.display = 'none';
+    promptControls.style.display = 'none';
     checkServerHealth().then((health) => {
         if (health) {
             console.log('Server healthy.');

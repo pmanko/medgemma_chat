@@ -19,8 +19,10 @@ class ChatRequest(BaseModel):
     scope: Optional[str] = Field(default="hie", description="facility | hie")
     facility_id: Optional[str] = None
     org_ids: Optional[List[str]] = None
+    orchestrator_mode: Optional[str] = Field(default="simple", description="simple | react")
 
 
 class ChatResponse(BaseModel):
     response: str
-    correlation_id: str 
+    correlation_id: str
+    responding_agent: Optional[str] = None 
