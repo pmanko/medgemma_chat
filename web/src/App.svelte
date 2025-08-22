@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
 
   let mode: 'agents' | 'direct' = 'agents';
+  let orchestratorMode: 'simple' | 'react' = 'simple';
   let selectedModel: 'orchestrator' | 'medical' | 'clinical' = 'orchestrator';
   let prompt = '';
   let isSending = false;
@@ -44,7 +45,11 @@
         res = await fetch(`${SERVER_URL}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: thisPrompt, conversation_id: `conv_${Date.now()}` })
+          body: JSON.stringify({ 
+            prompt: thisPrompt, 
+            conversation_id: `conv_${Date.now()}`,
+            orchestrator_mode: orchestratorMode
+          })
         });
       } else {
         // Build conversation history from messages, excluding system messages
@@ -110,6 +115,17 @@
             </ul>
           </details>
         </li>
+        {#if mode === 'agents'}
+        <li>
+          <details class="dropdown">
+            <summary><span>{orchestratorMode === 'simple' ? 'Single-Shot' : 'ReAct'}</span></summary>
+            <ul>
+              <li><button class="link-like" on:click|preventDefault={() => orchestratorMode = 'simple'}>Single-Shot</button></li>
+              <li><button class="link-like" on:click|preventDefault={() => orchestratorMode = 'react'}>ReAct</button></li>
+            </ul>
+          </details>
+        </li>
+        {/if}
         {#if mode === 'direct'}
         <li>
           <details class="dropdown">
