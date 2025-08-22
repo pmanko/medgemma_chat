@@ -7,10 +7,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/chat': 'http://localhost:3001',
-      '/generate': 'http://localhost:3001',
-      '/health': 'http://localhost:3001',
-      '/manifest': 'http://localhost:3001'
+      '/chat': 'http://localhost:8080',
+      '/generate': 'http://localhost:8080',
+      '/health': 'http://localhost:8080',
+      '/manifest': 'http://localhost:8080'
     }
   },
   build: {

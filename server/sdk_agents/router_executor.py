@@ -155,12 +155,12 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
                 ),
             )
             
-            logger.info("Router: Determining which agent should handle the query...")
+            logger.info(f"[Task {task.id}] Routing query: '{query}'")
             routing_result = await self._route_query(query)
-            logger.info(f"Router: Decision - route to agent '{routing_result['agent']}'. Reasoning: {routing_result['reasoning']}")
-            
+            agent_name = routing_result['agent']
             agent_url = routing_result["url"]
-            logger.info(f"Router: Connecting to specialist agent at {agent_url}")
+            logger.info(f"[Task {task.id}] Decision: route to agent '{agent_name}' at {agent_url}. Reasoning: {routing_result['reasoning']}")
+            
             resolver = A2ACardResolver(self.http_client, agent_url)
             agent_card = await resolver.get_agent_card()
 
@@ -174,57 +174,33 @@ Respond with JSON: {{"agent": "agent_name", "reasoning": "why this agent"}}"""
             message = Message(
                 messageId=str(uuid.uuid4()),
                 role=Role.user, 
-                parts=[Part(root=TextPart(text=query))]
+                parts=[Part(root=TextPart(text=query))],
+                metadata=context.message.metadata if context.message else None,
             )
-            produced_any = False
-            completed = False
-            async for event in client.send_message(message):
-                evt = event[0] if isinstance(event, tuple) else event
-
-                if isinstance(evt, TaskArtifactUpdateEvent):
-                    await task_updater.add_artifact(getattr(evt.artifact, "parts", []) or [], name=getattr(evt.artifact, "name", "result"))
-                    produced_any = True
-                    continue
-
-                if isinstance(evt, TaskStatusUpdateEvent):
-                    state = getattr(evt.status, "state", TaskState.working)
-                    text_parts: list[str] = []
-                    if getattr(evt.status, "message", None):
-                        for p in evt.status.message.parts:
-                            if hasattr(p, "root") and hasattr(p.root, "text") and p.root.text:
-                                text_parts.append(p.root.text)
-                    status_text = "\n".join(text_parts) if text_parts else f"Routed to {routing_result['agent']} ({getattr(state, 'name', str(state))})"
-                    await task_updater.update_status(state, new_agent_text_message(status_text, task.context_id, task.id))
-                    produced_any = True
-                    if state == TaskState.completed:
-                        completed = True
-                    continue
-
-                if hasattr(evt, "root") and isinstance(evt.root, SendStreamingMessageSuccessResponse):
-                    inner = evt.root.result
-                    if isinstance(inner, TaskArtifactUpdateEvent):
-                        await task_updater.add_artifact(getattr(inner.artifact, "parts", []) or [], name=getattr(inner.artifact, "name", "result"))
-                        produced_any = True
-                    elif isinstance(inner, TaskStatusUpdateEvent):
-                        state = getattr(inner.status, "state", TaskState.working)
-                        text_parts: list[str] = []
-                        if getattr(inner.status, "message", None):
-                            for p in inner.status.message.parts:
-                                if hasattr(p, "root") and hasattr(p.root, "text") and p.root.text:
-                                    text_parts.append(p.root.text)
-                        status_text = "\n".join(text_parts) if text_parts else f"Routed to {routing_result['agent']} ({getattr(state, 'name', str(state))})"
-                        await task_updater.update_status(state, new_agent_text_message(status_text, task.context_id, task.id))
-                        produced_any = True
-                        if state == TaskState.completed:
-                            completed = True
-
-            if not completed:
-                if not produced_any:
-                    await task_updater.add_artifact([Part(root=TextPart(text=f"Routed to {routing_result['agent']}"))], name="router_summary")
-                await task_updater.complete()
             
+            logger.info(f"[Task {task.id}] Forwarding message to {agent_name} and awaiting events...")
+            final_task = None
+            async for event in client.send_message(message):
+                # The event can be a tuple, the first element is the task/update
+                final_task = event[0] if isinstance(event, tuple) else event
+                logger.info(f"[Task {task.id}] Received event from {agent_name}: {type(final_task).__name__}")
+
+            # After the stream is done, process the final task state
+            if final_task and getattr(final_task, 'artifacts', None):
+                logger.info(f"[Task {task.id}] Final task received with {len(final_task.artifacts)} artifacts. Forwarding to parent.")
+                # Forward the last artifact from the downstream agent
+                last_artifact = final_task.artifacts[-1]
+                await task_updater.add_artifact(last_artifact.parts, name=last_artifact.name)
+            else:
+                logger.warning(f"[Task {task.id}] Final task received from {agent_name} had no artifacts.")
+                summary_text = f"Task completed by {agent_name}, but no response artifact was found."
+                await task_updater.add_artifact([Part(root=TextPart(text=summary_text))])
+            
+            logger.info(f"[Task {task.id}] Completing router task.")
+            await task_updater.complete()
+
         except Exception as e:
-            logger.error(f"Router execution failed: {e}", exc_info=True)
+            logger.error(f"[Task {task.id}] Router execution failed: {e}", exc_info=True)
             await task_updater.update_status(
                 TaskState.failed,
                 new_agent_text_message(f"Routing failed: {str(e)}", task.context_id, task.id)

@@ -13,7 +13,7 @@ A pure A2A (Agent-to-Agent) protocol implementation for collaborative medical AI
 
 ```bash
 # 1. Setup
-cd projects/multiagent_chat
+cd projects/med-agent-hub
 cp env.recommended .env
 # Edit .env: Set AGENT_HOST_IP and LLM_BASE_URL
 

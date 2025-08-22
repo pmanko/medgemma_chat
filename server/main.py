@@ -14,6 +14,7 @@ from .llm_clients import llm_client
 from .schemas import ChatRequest, ChatResponse
 
 import requests
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -271,7 +272,7 @@ def chat(request: ChatRequest):
         # not just a payload. We construct one here.
         a2a_message = {
             "jsonrpc": "2.0",
-            "method": "send_message",
+            "method": "message/send",
             "params": {
                 "message": {
                     "message_id": str(uuid.uuid4()),
@@ -301,25 +302,26 @@ def chat(request: ChatRequest):
         )
         resp.raise_for_status()
         data = resp.json()
-
+        
         # Extract the final text response from the A2A task structure
         final_text = "(No content was returned from the agent network)"
         task_result = data.get("result", {})
         
         # The result from an SDK agent is a Task object. We need to parse it.
-        artifacts = task_result.get("artifacts", [])
-        if artifacts:
+        if task_result:
             # The final answer is usually in the last artifact
-            last_artifact = artifacts[-1]
-            parts = last_artifact.get("parts", [])
-            if parts:
-                text_part = parts[0].get("root", {})
-                if text_part.get("kind") == "text":
-                    final_text = text_part.get("text", final_text)
+            artifacts = task_result.get("artifacts", [])
+            if artifacts:
+                last_artifact = artifacts[-1]
+                parts = last_artifact.get("parts", [])
+                if parts:
+                    text_part = parts[0]
+                    if text_part.get("kind") == "text":
+                        final_text = text_part.get("text", final_text)
 
         return ChatResponse(
             response=final_text, 
-            correlation_id=task_result.get("id", "native")
+            correlation_id=task_result.get("id", "native") if task_result else "native"
         )
 
     except requests.exceptions.RequestException as e:

@@ -6,7 +6,7 @@ A pure A2A (Agent-to-Agent) protocol implementation using the A2A SDK v0.3.2+ fo
 
 ```bash
 # 1. Configure environment
-cd projects/multiagent_chat
+cd projects/med-agent-hub
 cp env.recommended .env  # Edit with your LM Studio IP
 
 # 2. Start all agents

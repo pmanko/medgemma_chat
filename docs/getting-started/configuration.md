@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-cd projects/multiagent_chat
+cd projects/med-agent-hub
 cp env.recommended .env
 # Edit .env with your LM Studio IP address
 ```

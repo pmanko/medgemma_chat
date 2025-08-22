@@ -45,6 +45,7 @@ class MedGemmaExecutor(AgentExecutor):
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         
         try:
+            logger.info(f"[Task {task.id}] Processing medical query: '{query[:80]}...'")
             # Update status to working
             await updater.update_status(
                 TaskState.working,
@@ -102,10 +103,11 @@ class MedGemmaExecutor(AgentExecutor):
             )
             
             # Complete the task
+            logger.info(f"[Task {task.id}] Task completed successfully.")
             await updater.complete()
             
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error calling LLM: {e}")
+            logger.error(f"[Task {task.id}] HTTP error calling LLM: {e}")
             error_msg = f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
             await updater.update_status(
                 TaskState.failed,
@@ -113,7 +115,7 @@ class MedGemmaExecutor(AgentExecutor):
             )
             
         except Exception as e:
-            logger.error(f"Error processing medical query: {e}", exc_info=True)
+            logger.error(f"[Task {task.id}] Error processing medical query: {e}", exc_info=True)
             error_msg = f"I encountered an error processing your medical question. Please try again. Error: {str(e)}"
             await updater.update_status(
                 TaskState.failed,
